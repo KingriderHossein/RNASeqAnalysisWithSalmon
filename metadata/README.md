@@ -31,6 +31,10 @@ Nikitina et al. excluded histologically problematic/outlier samples after MDS an
 
 The paper explicitly reports that BP3/BN3 had initially been documented as BPH, but review showed the patient actually had PCa; BP3 was retained in the tumor group.
 
+Excluded pairs were also recorded with their pathology-based reasons: CN5/CP5 (seminal-vesicle contamination), CP6/CN6 and CP7/CN7 (insufficient tumor fraction / high normal-tissue contribution), CP9/CN9 (infiltrative growth prevented clean tumor-normal separation), and CP10/CN10 (substantial normal tissue in the tumor section).
+
+One metadata discrepancy is preserved rather than silently corrected: GEO reports PSA 13.5 ng/ml for CP2, while Table 1 of the paper reports 8.6 ng/ml. The expression analysis does not depend on this PSA value, but provenance requires that both values be noted.
+
 ### Planned project contrasts
 
 1. **Paper-reproduction contrast:** the paper's 10 tumor vs 12 control final cohort. This is required for the most direct comparison with the reported 3,384 DE genes.
