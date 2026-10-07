@@ -1,0 +1,43 @@
+# Raw sequencing and archives
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.sra
+*.bam
+*.bai
+*.cram
+*.crai
+
+# Large references and indexes
+references/*.fa
+references/*.fasta
+references/*.fa.gz
+references/*.fasta.gz
+references/*.gtf
+references/*.gtf.gz
+references/salmon_index/
+indexes/
+
+# Salmon per-sample bulk outputs can be regenerated
+data/
+raw/
+work/
+cache/
+
+# R / Python local state
+.Rhistory
+.RData
+.Rproj.user/
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Conda
+.conda/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
