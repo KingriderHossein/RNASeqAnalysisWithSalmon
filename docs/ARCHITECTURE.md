@@ -1,359 +1,747 @@
-# Analysis Architecture v1.1
+# Project Architecture v2.0 — FINAL
 
-Status: **technical baseline for the Salmon-first workflow**
+Status: **FROZEN BASELINE**
 
-This document owns the stable technical architecture of the GSE89223 reanalysis. GitHub Issues own live task state. `docs/PROJECT-SPEC.md` owns project-level intent.
+This is the canonical technical map for the GSE89223 project. Detailed scientific decisions, data schemas, validation rules, and governance live in the linked architecture documents.
 
-## 1. Architectural objective
+## Canonical architecture set
 
-Reanalyse GSE89223 with a workflow whose **primary quantification path is Salmon**:
+- [PROJECT-SPEC.md](PROJECT-SPEC.md) — goal, scope, deliverables, completion
+- [ARCHITECTURE.md](ARCHITECTURE.md) — end-to-end stage model
+- [DECISIONS.md](DECISIONS.md) — frozen scientific/engineering decisions
+- [DATA-CONTRACTS.md](DATA-CONTRACTS.md) — schemas, identities, provenance
+- [VALIDATION.md](VALIDATION.md) — stage gates and rejection rules
+- [GOVERNANCE.md](GOVERNANCE.md) — GitHub workflow and change control
+- [../metadata/README.md](../metadata/README.md) — verified sample/cohort provenance
+
+## 1. Scientific objective
+
+Reanalyse:
+
+`GSE89223 / SRP092131 / PRJNA350714`
+
+with the primary workflow:
 
 ```text
-verified cohort
-    -> raw single-end reads
-    -> read QC
-    -> version-pinned reference bundle
-    -> decoy-aware Salmon index
-    -> Salmon transcript quantification
-    -> tximport gene summarization
-    -> DESeq2
-    -> gene-level comparison with the published study
+FASTQ
+→ QC
+→ Salmon
+→ tximport
+→ DESeq2
+→ validation
+→ comparison with original publication
 ```
 
-The original STAR -> HTSeq -> edgeR workflow is **not** part of the execution path. It is the external comparator used at the final interpretation stage.
+The publication's:
 
-## 2. Core invariants
+```text
+FastQC → Cutadapt → STAR → HTSeq → edgeR
+```
 
-1. Salmon is the only primary transcript quantifier.
-2. No sample reaches full quantification before metadata, reference, and single-end parameter gates pass.
-3. All samples in one analysis track use the same reference bundle, Salmon index, preprocessing policy, and quantification configuration.
-4. `tx2gene` must come from the same annotation release used to define the indexed transcripts.
-5. TPM values are not supplied directly to DESeq2.
-6. Raw sequencing data and Salmon indexes stay outside Git.
-7. The paper-comparison analysis and sensitivity analyses remain separate.
-8. Changes to the primary reference, cohort, or Salmon parameter set after full quantification require an explicit documented rerun decision.
+workflow is a **comparator only** and is not rerun in the primary project.
+
+## 2. Dataset identity
+
+GSE89223 is:
+- human prostate tissue;
+- FFPE;
+- Ion Torrent Proton;
+- single-end;
+- total-RNA / rRNA-depleted RNA-seq;
+- not strict Poly(A)+ mRNA-seq.
+
+Therefore the primary analysis is a **whole-transcriptome expression analysis**. The primary reference must preserve non-protein-coding transcript classes represented in the publication.
 
 ## 3. Analysis tracks
 
-### Track A — primary paper-comparison analysis
+### Track A — publication-comparison
 
-Purpose: maximize interpretability of differences between this Salmon workflow and the published analysis.
+Purpose: compare with the paper's final DE analysis.
 
-- Cohort: the verified paper-comparison cohort defined in `metadata/README.md` and `metadata/derived/GSE89223_sample_manifest.tsv`.
-- Reference context: GENCODE Release 19 / GRCh37.p13, matching the original paper's hg19 + GENCODE 19 context as closely as practical.
-- Output: the primary gene-level DEG result used for comparison with the publication.
+Cohort:
+- 10 tumor;
+- 12 control.
 
-### Track B — paired PCa sensitivity analysis
+Control composition:
+- 9 PCa adjacent-normal;
+- 1 normal BPH tissue;
+- 2 hyperplastic BPH tissues.
 
-Purpose: test robustness in verified matched PCa tumor/adjacent-normal pairs.
+Design:
 
-- Cohort: the verified matched-pair cohort defined in `metadata/README.md` and `metadata/derived/GSE89223_sample_manifest.tsv`.
-- DE design: paired model, conceptually `~ patient + condition`.
-- Uses the same Salmon reference/index/quantification outputs where samples overlap Track A.
-- Remains secondary and must not replace Track A in the paper-comparison report.
+```r
+~ group
+```
 
-A modern-reference GRCh38 analysis is optional future work and is not required for project completion.
+Contrast:
 
-## 4. Stage architecture and gates
+```text
+tumor vs control
+```
 
-### Stage 0 — cohort and provenance lock
+### Track B — paired PCa sensitivity
 
-Inputs:
-- GEO GSE89223
-- SRA SRP092131
-- BioProject PRJNA350714
-- paper and supplementary information
+Purpose: test robustness using matched patients.
 
-Outputs:
-- machine-readable sample manifest
-- explicit biological groups and patient pairing
-- explicit inclusion/exclusion fields
-- named analysis cohorts
+Cohort:
+- 9 matched PCa patients;
+- 9 tumor;
+- 9 adjacent-normal;
+- BPH controls excluded;
+- unpaired CP2 excluded.
 
-Gate G0:
-- cohort identities are explicit and reproducible
-- no sample grouping is inferred from file order or name prefix alone
+Design:
 
-Current state: Issue #1 established this layer.
+```r
+~ patient + condition
+```
 
-### Stage 1 — reproducible environment
+Contrast:
 
-Required components:
-- Salmon 2.x, exact version pinned at execution
-- FastQC
-- MultiQC
-- raw-read retrieval tool
-- R
-- tximport
-- DESeq2
-- packages/scripts required to construct `tx2gene`
+```text
+tumor vs adjacent_normal
+```
 
-Gate G1:
-- Salmon binary identity and exact version are verified
-- command semantics are taken from Salmon 2.x documentation when behavior differs from legacy 1.x
-- downstream R package versions are recorded
+Track A and Track B are separate analyses and must never be silently mixed.
 
-### Stage 2 — raw-read acquisition
+## 4. End-to-end architecture
 
-The verified manifest is the only source of run accessions.
+```text
+Stage 0  Architecture freeze
+   ↓
+Stage 1  Sample / cohort lock
+   ↓
+Stage 2  Reproducible environment
+   ↓
+Stage 3  Reference bundle
+   ↓
+Stage 4  Raw reads + QC / preprocessing decision
+   ↓
+Stage 5  Salmon pilot
+   ↓
+Stage 6  Full Salmon quantification
+   ↓
+Stage 7  tximport / gene-level import
+   ↓
+Stage 8  DESeq2
+   ↓
+Stage 9  Validation
+   ↓
+Stage 10 Publication benchmark
+   ↓
+Stage 11 Final report / reproducibility closure
+```
 
-For each approved run:
-- retrieve the raw single-end read file
-- record accession, source, file size, and integrity evidence
-- keep raw reads outside Git
+Dependent stages cannot be accepted before their required gate passes.
 
-Gate G2a:
-- every downloaded file maps to exactly one manifest row
-- integrity checks pass
+## 5. Stage 0 — Architecture freeze
 
-### Stage 3 — raw-read QC and preprocessing decision
+### Inputs
+- project objective;
+- dataset choice;
+- publication;
+- current repository state.
 
-Run:
-- FastQC per sample
-- MultiQC across the analysis cohort
+### Required outputs
+- project specification;
+- architecture;
+- decision record;
+- data contracts;
+- validation architecture;
+- governance model.
 
-Policy:
-- trimming is evidence-driven, not automatic
-- if trimming is required, define one reproducible rule before full quantification
-- if trimming is performed, run post-trim QC
+### Gate G0
+Pass when:
+- question is explicit;
+- tracks are explicit;
+- reference strategy is explicit;
+- Salmon strategy is explicit;
+- statistical designs are explicit;
+- storage/provenance are explicit;
+- completion criteria are explicit.
 
-Gate G2b:
-- QC is reviewed
-- the project records either `no trimming required` or the exact preprocessing rule
-- sample exclusion requires a documented reason independent of desired DE results
+## 6. Stage 1 — Sample / cohort lock
 
-## 5. Stage 4 — reference bundle and Salmon index
+### Authoritative inputs
+- GEO GSE89223;
+- SRA SRP092131;
+- BioProject PRJNA350714;
+- paper and supplements.
 
-### Primary reference bundle
+### Identity chain
 
-Use matching files from **GENCODE Release 19 / GRCh37.p13**:
+```text
+GSM → SRX → SRR → BioSample → patient → diagnosis → tissue → analysis group
+```
 
-1. official transcript FASTA for the indexed transcript set
-2. matching comprehensive GTF for transcript-to-gene relationships
-3. matching genome FASTA for decoy sequences
+### Canonical artifact
 
-Do not regenerate transcript FASTA from GTF/genome unless the official transcript FASTA is unavailable or a documented incompatibility requires it.
+`metadata/derived/GSE89223_sample_manifest.tsv`
 
+### Rules
+- no grouping from filename order;
+- no grouping from prefix alone;
+- no biological relabeling from PCA;
+- no post-hoc relabeling to improve agreement.
+
+### Gate G1
+Pass when:
+- all included runs map to metadata;
+- Track A membership is explicit;
+- Track B membership is explicit;
+- pairing is explicit;
+- exclusions are documented;
+- metadata discrepancies remain visible.
+
+## 7. Stage 2 — Reproducible environment
+
+### Required tool families
+CLI:
+- Salmon 2.x;
+- FastQC;
+- MultiQC;
+- raw-read retrieval tool;
+- checksum utilities;
+- reference construction utilities.
+
+R/Bioconductor:
+- R;
+- tximport;
+- DESeq2;
+- annotation/parsing packages;
+- plotting/reporting packages used by the final workflow.
+
+### Rules
+- exact versions recorded;
+- exact binary identity recorded;
+- install source/channel recorded;
+- environment specification committed;
+- version-sensitive options checked against exact installed version.
+
+### Salmon compatibility
+Salmon 1.x indexes must not be reused with Salmon 2.x.
+
+### Gate G2
+Pass when the environment is reproducible and executable identities are unambiguous.
+
+## 8. Stage 3 — Reference bundle
+
+### Primary context
+- GRCh37.p13 / hg19-era benchmark context;
+- GENCODE Release 19 comprehensive GTF;
+- matching GRCh37.p13 genome;
+- comprehensive transcript FASTA derived from genome + comprehensive GTF;
+- matching genome decoys;
+- tx2gene derived from same GTF;
+- gene/transcript biotype mappings from same GTF.
+
+### Why comprehensive
+The publication's DE result included protein-coding and non-coding/other classes. A protein-coding-only reference would change the biological search space and invalidate the primary benchmark.
+
+### Decoy-aware index
+
+```text
+comprehensive transcript FASTA
++
+matching genome sequences
++
+decoys.txt
+→ Salmon selective-alignment index
+```
+
+Primary mode:
+- selective alignment;
+- decoy-aware;
+- no `--sketch`.
+
+Primary k-mer behavior:
+- normal k=31 baseline unless read-length QC justifies a separate sensitivity index.
+
+### Reference identity must include
+- source URLs;
+- checksums;
+- build/release;
+- derivation commands;
+- transcript/gene counts;
+- biotype summary;
+- tx2gene checksum;
+- decoy checksum;
+- index identity/hash;
+- Salmon version used for index construction.
+
+### Gate G3
+Pass when all reference components reconcile and no annotation-release mixing exists.
+
+## 9. Stage 4 — Raw data + QC
+
+### Raw input
+Only run accessions approved by the manifest.
+
+### Storage
+Raw FASTQ/SRA are immutable external inputs and stay outside Git.
+
+### Per-sample provenance
 Record:
-- source URLs
-- release/build identifiers
-- checksums
-- sequence-name compatibility
-- transcript identifier/version-suffix policy
+- accession;
+- source;
+- local path;
+- size;
+- checksum;
+- read/spot count;
+- acquisition provenance.
 
-### Decoy-aware Salmon index
+### QC
+FastQC per sample + MultiQC across cohort.
 
-```text
-GENCODE v19 transcript FASTA
-        +
-matching GRCh37 genome FASTA as decoys
-        -> decoy-aware target
-        -> salmon index
-```
+Review:
+- read count;
+- read-length distribution;
+- per-base quality;
+- per-sequence quality;
+- GC distribution;
+- adapters/overrepresented sequences;
+- duplication indicators;
+- abnormal composition.
 
-Salmon 2.x selective alignment is the primary mapping mode. The matching genome is used as decoy sequence.
+### Dataset-specific expectations
+- FFPE degradation;
+- variable single-end read lengths;
+- possible fragmentation/3′ bias;
+- Ion Torrent homopolymer/indel-related error characteristics.
 
-Initial k-mer choice: `k=31`. The study read lengths are predominantly above the range for which Salmon documents k=31 as a normal choice. If pilot mapping is unexpectedly poor and short-read content is implicated, an alternate k-mer index may be evaluated as a technical sensitivity test. Indexes must never be mixed within one analysis track.
+These require review, not automatic sample exclusion.
 
-Gate G3:
-- reference checksums are recorded
-- transcript/GTF identifiers reconcile
-- decoy list and index command are reproducible
-- finished index reports the expected reference identity
-
-## 6. Stage 5 — Salmon quantification
-
-GSE89223 runs are single-end Ion Torrent Proton RNA-seq.
-
-### Library type
-
-Pilot quantification uses `-l A` so Salmon can infer the library type. The detected type must be recorded from Salmon metadata/logs.
-
-If library-preparation documentation and observed behavior disagree, resolve the discrepancy before full quantification.
-
-### Single-end fragment-length distribution
-
-For single-end reads Salmon cannot empirically recover the fragment-length distribution from paired mappings. Therefore `--fldMean` and `--fldSD` are a **pre-full-run technical decision gate**.
-
-Policy:
-1. seek library-preparation evidence for expected fragment size
-2. define a plausible primary prior
-3. run a small pilot sensitivity analysis over plausible alternative priors
-4. judge technical stability using mapping/assignment and abundance diagnostics, not downstream DE significance
-5. freeze one parameter set before full quantification
-
-Do not tune fragment-length parameters to maximize agreement with the paper.
-
-### Bias correction
-
-The pilot evaluates the planned bias-correction configuration. The primary candidate configuration includes Salmon sequence- and GC-bias correction where compatible with Salmon 2.x and this dataset. Final flags are frozen before the full run and recorded in Salmon metadata plus project configuration.
-
-### Pilot
-
-Before full quantification, run a small representative pilot containing tumor and normal samples.
-
-Pilot acceptance:
-- library type is resolved
-- fragment-length prior is frozen
-- mapping/assignment statistics are credible
-- no systematic input/reference incompatibility is visible
-- valid `quant.sf` and Salmon metadata are produced
-
-Gate G4:
-- one immutable Salmon quantification configuration is approved for full execution
-
-### Full quantification
-
-Each sample gets an independent output directory:
+### Trimming
+Conditional only:
 
 ```text
-external_results/salmon/<SAMPLE>/
-  quant.sf
-  cmd_info.json
-  aux_info/...
+QC acceptable → retain raw reads
+QC shows material adapter/quality issue → predefined Cutadapt rule → post-trim QC
 ```
 
-Gate G5:
-- all expected samples complete with one index and one parameter configuration
-- Salmon QC metrics are summarized
-- failed or anomalous samples are resolved before R analysis
+No trimming rule is tuned against DE overlap.
 
-## 7. Stage 6 — transcript-to-gene import
+### Gate G4
+Pass when raw identity/integrity is verified and preprocessing policy is frozen.
 
-Primary route:
+## 10. Stage 5 — Salmon pilot
+
+Purpose: freeze the technical Salmon configuration before the full run.
+
+### Pilot sample selection
+Use a small representative tumor/control subset with ordinary depth/quality characteristics.
+
+Selection must not depend on desired biological outcome.
+
+### Pilot resolves
+- library type;
+- version-specific single-end fragment-length behavior;
+- sequence/GC/positional bias options;
+- reference compatibility;
+- mapping/assignment diagnostics;
+- required retained outputs.
+
+### Single-end fragment length
+Do not blindly copy legacy `--fldMean`/`--fldSD` recipes.
+
+At execution time:
+- inspect exact Salmon 2.x behavior;
+- record fragment-length metadata emitted by Salmon;
+- use a biologically plausible prior only if the exact version supports/requires it;
+- sensitivity-test technical assumptions when justified.
+
+No fragment-length choice may be selected by maximizing paper agreement.
+
+### Gene aggregation
+Primary gene aggregation is downstream in tximport, not via Salmon `--geneMap`.
+
+### Inferential replicates
+Not required for the primary gene-level tximport → DESeq2 project.
+
+### Required retained Salmon outputs
+At minimum:
+- `quant.sf`;
+- `cmd_info.json`;
+- `lib_format_counts.json`;
+- `aux_info/meta_info.json`;
+- `aux_info/ambig_info.tsv`;
+- `libParams/flenDist.txt`;
+- `logs/salmon_quant.log`.
+
+### Gate G5
+Pass only when one primary Salmon configuration is frozen in version-controlled configuration.
+
+## 11. Stage 6 — Full Salmon quantification
+
+### Invariants
+Every sample in one analysis_id uses:
+- one reference bundle;
+- one index;
+- one preprocessing policy;
+- one Salmon version;
+- one frozen primary configuration.
+
+### Quantification manifest
+Records:
+- analysis_id;
+- sample_id;
+- SRR;
+- input checksum;
+- preprocessing ID;
+- reference ID;
+- index ID/hash;
+- Salmon version;
+- config ID/hash;
+- output path;
+- completion/warning/exclusion state.
+
+### Hard failures
+Examples:
+- non-zero execution;
+- missing/malformed `quant.sf`;
+- wrong index;
+- sample/input mismatch;
+- fatal Salmon diagnostic.
+
+### Review-required warnings
+Examples:
+- mapping-rate outlier;
+- unexpected library type;
+- high decoy fraction;
+- anomalous read count;
+- unusual fragment-length metadata.
+
+Warnings do not automatically remove samples.
+
+### Gate G6
+Pass when every expected sample is quantified or explicitly excluded with justified provenance.
+
+## 12. Stage 7 — tximport / gene level
+
+### Primary route
 
 ```text
-quant.sf files
-    -> tximport(type = "salmon", tx2gene = ...)
-    -> gene-level counts + abundance + effective-length information
-    -> DESeqDataSetFromTximport(...)
+quant.sf × samples
+→ tximport(type="salmon", tx2gene=...)
+→ gene-level counts + abundance + length information
+→ DESeqDataSetFromTximport(...)
 ```
 
-Rules:
-- construct `tx2gene` from the exact GENCODE v19 GTF used by the reference bundle
-- transcript ID/version handling must be explicit
-- use tximport/DESeq2 integration instead of feeding TPM directly to DESeq2
-- verify imported sample order against the manifest
+### Rules
+- tx2gene comes from the exact GENCODE v19 GTF;
+- transcript version handling is explicit;
+- sample order must match metadata;
+- unmatched transcripts are quantified;
+- TPM is not used directly as DESeq2 count input.
 
-Gate G6:
-- all Salmon files import successfully
-- transcript-to-gene mapping losses are quantified and investigated
-- sample names exactly match metadata
+### Gate G7
+Pass when the gene-level object is complete, traceable and internally consistent.
 
-## 8. Stage 7 — DESeq2
+## 13. Stage 8 — DESeq2
 
-Track A and Track B get separate DESeq2 objects/designs.
+### Track A
+`design = ~ group`
 
-Required pre-DE checks:
-- sample/library summaries
-- PCA
-- sample-distance structure
-- dispersion diagnostics
-- documented outlier review
+Reference: control  
+Contrast: tumor vs control
 
-Primary output includes:
-- gene identifier
-- optional gene symbol
-- baseMean
-- log2FoldChange
-- standard error
-- p-value
-- adjusted p-value
+### Track B
+`design = ~ patient + condition`
 
-Filtering and significance thresholds are declared before interpreting agreement with the original paper.
+Reference: adjacent_normal  
+Contrast: tumor vs adjacent_normal
 
-Protein-coding-only reporting, if required, is a downstream annotation filter and does not silently redefine the indexed transcriptome.
-
-Gate G7:
-- DE design is explicit
-- contrasts are reproducible
-- QC/outlier decisions are documented
-
-## 9. Stage 8 — comparison with the original paper
-
-Only after the Salmon -> tximport -> DESeq2 result is complete:
+### Primary DEG threshold
 
 ```text
-our gene-level results
-        vs
-published STAR -> HTSeq -> edgeR results
+BH-adjusted p-value < 0.05
 ```
 
-Compare where evidence allows:
-- number of DE genes
-- gene overlap
-- concordance of direction
-- fold-change correlation
-- top-ranked genes
-- pathway/function enrichment
-- differences attributable to cohort, annotation, quantifier, or statistical method
+No mandatory absolute log2FC threshold is added to the primary benchmark definition.
 
-The project does **not** rerun STAR/HTSeq/edgeR unless a future task explicitly adds that scope.
+### Filtering
+- all-zero genes may be removed;
+- documented independent filtering may be used;
+- arbitrary post-hoc filters are prohibited.
 
-## 10. Repository and storage architecture
+### Visualization transforms
+VST/rlog-style transformed values may be used for PCA, heatmaps and distances, but not as raw DE input.
 
-Version-controlled:
+### LFC shrinkage
+Optional for reporting/ranking; it does not redefine primary significance.
+
+### Outliers
+Sample deletion is never automatic.
+
+### Gate G8
+Pass when model matrix, metadata order, contrasts, PCA, sample distances, dispersion and outlier diagnostics are reviewed.
+
+## 14. Stage 9 — Validation
+
+Four layers:
+
+### Technical
+- input integrity;
+- QC;
+- reference consistency;
+- index identity;
+- Salmon completion;
+- library type;
+- assignment/mapping diagnostics;
+- tximport completeness.
+
+### Statistical
+- PCA;
+- sample distances;
+- dispersion;
+- normalization factors;
+- p-value/padj behavior;
+- independent filtering;
+- outlier diagnostics.
+
+### Biological sanity
+Post-analysis only.
+
+Examples:
+- PCA3;
+- AMACR;
+- ANKRD34B;
+- NEK5;
+- KCNG3;
+- PTPRT.
+
+These markers must never tune the workflow.
+
+### Sensitivity
+- Track B required;
+- additional technical sensitivity only when technically justified.
+
+### Gate G9
+Pass when no unresolved critical inconsistency remains.
+
+See [VALIDATION.md](VALIDATION.md).
+
+## 15. Stage 10 — Publication benchmark
+
+### Primary comparator
+Paper final 22-sample DE analysis / Supplementary Table 1.
+
+Published headline:
+- 3,384 DE genes at FDR < 0.05;
+- 3,013 protein-coding;
+- 371 non-coding/other;
+- 1,490 upregulated;
+- 1,894 downregulated.
+
+### Identifier harmonization
+- preserve internal canonical IDs;
+- create separate normalized Ensembl gene-ID comparison key;
+- strip version suffixes only in comparison key;
+- symbols are secondary.
+
+### Required comparison metrics
+1. tested-gene count;
+2. significant-gene count;
+3. overlap;
+4. union;
+5. Jaccard;
+6. published-DE recovery fraction;
+7. direction concordance;
+8. comparable log2FC correlation;
+9. comparable rank correlation;
+10. biotype composition;
+11. top-gene comparison;
+12. marker consistency;
+13. pathway comparison if performed.
+
+### Difference attribution categories
+- cohort;
+- reference/annotation;
+- transcript-vs-genome quantification;
+- multimapping/gene-family;
+- effective length / isoform composition;
+- DE statistical model;
+- FFPE degradation;
+- Ion Torrent profile;
+- preprocessing;
+- unresolved.
+
+### Important limitation
+This project compares complete pipelines:
 
 ```text
-README.md
-docs/
-  PROJECT-SPEC.md
-  ARCHITECTURE.md
-metadata/
-scripts/
-config/
-environment/
-results/
-  qc_summary/
-  salmon_summary/
-  deseq2/
-  comparison/
+STAR/HTSeq/edgeR
+vs
+Salmon/tximport/DESeq2
 ```
 
-Not version-controlled:
+It does not isolate Salmon-vs-STAR effects without a separate future factorial bridge analysis.
+
+### Gate G10
+Pass when required metrics and methodological explanations are complete.
+
+## 16. Stage 11 — Final report / closure
+
+Final report includes:
+1. project question;
+2. dataset description;
+3. whole-transcriptome/rRNA-depleted caveat;
+4. cohort construction;
+5. reference construction;
+6. QC decision;
+7. Salmon configuration;
+8. Salmon diagnostics;
+9. tximport strategy;
+10. Track A results;
+11. Track B results;
+12. technical validation;
+13. statistical validation;
+14. biological sanity checks;
+15. publication benchmark;
+16. causes of agreement/disagreement;
+17. limitations;
+18. reproducibility identity;
+19. conclusion.
+
+## 17. Reproducibility identity
+
+Every final result must resolve to:
 
 ```text
-raw FASTQ/SRA
-reference genome/transcript FASTA
-Salmon indexes
-large temporary/intermediate data
-package caches
+sample manifest
++ cohort revision
++ input checksum
++ reference checksum
++ index identity
++ Salmon version/config
++ tx2gene identity
++ R/Bioconductor versions
++ DE design
++ repository commit
+= analysis_id
 ```
 
-Recommended external working layout:
+Different analysis IDs must never be mixed silently.
+
+## 18. Storage architecture
+
+External heavy workspace:
 
 ```text
 <project-data>/
-  raw/
-  references/
-  indexes/
-  salmon/
-  qc/
-  tmp/
+├── raw/
+├── references/
+├── indexes/
+├── qc/
+├── salmon/
+├── intermediate/
+├── logs/
+└── tmp/
 ```
 
-GitHub Issues are the source of truth for active work:
+Repository target:
 
 ```text
-Issue -> branch -> implementation/evidence -> PR -> review -> main
+RNASeqAnalysisWithSalmon/
+├── README.md
+├── AGENTS.md
+├── docs/
+│   ├── PROJECT-SPEC.md
+│   ├── ARCHITECTURE.md
+│   ├── DECISIONS.md
+│   ├── DATA-CONTRACTS.md
+│   ├── VALIDATION.md
+│   └── GOVERNANCE.md
+├── metadata/
+├── config/
+├── environment/
+├── scripts/
+├── results/
+│   ├── qc_summary/
+│   ├── salmon_summary/
+│   ├── track_a/
+│   ├── track_b/
+│   └── comparison/
+└── reports/
 ```
 
-## 11. Issue-to-stage map
+Heavy raw/reference/index/intermediate data remain outside Git.
 
-- #1 — Stage 0: metadata and cohort definition
-- #2 — Stage 1: reproducible environment
-- #3 — Stage 4: reference bundle and Salmon index
-- #4 — Stages 2-3: raw reads and QC
-- #5 — Stage 5: pilot + full Salmon quantification
-- #6 — Stages 6-8: tximport, DESeq2, and paper comparison
+## 19. Configuration architecture
 
-The stage numbers describe pipeline order. Issue numbers are management identities and need not match stage numbers.
+Planned configuration surfaces:
 
-## 12. Evidence used for this review
+```text
+config/
+├── project.yaml
+├── cohorts.tsv
+├── reference.yaml
+├── preprocessing.yaml
+├── salmon.yaml
+├── deseq2.yaml
+└── comparison.yaml
+```
 
-- Original study: Nikitina et al. 2017, PMCID PMC5464844
-- Salmon 2.x documentation: https://combine-lab.github.io/salmon/
-- tximport Bioconductor vignette
-- DESeq2 Bioconductor vignette
+Scientific decisions belong in configuration, not hidden script constants.
 
-This architecture changes only when new evidence changes a scientific or reproducibility assumption, not for routine progress.
+## 20. Failure classes
+
+### BLOCKER
+Stops dependent work.
+
+### REVIEW_REQUIRED
+Requires explicit review before acceptance.
+
+### INFO
+Recorded but non-blocking.
+
+Exact validation examples and rejection rules are defined in [VALIDATION.md](VALIDATION.md).
+
+## 21. Non-goals
+
+Primary completion does not require:
+- rerunning STAR/HTSeq/edgeR;
+- replacing GSE89223 with TCGA;
+- treating the paper as ground truth;
+- protein-coding-only reference;
+- exact reproduction of 3,384 DE genes;
+- relabeling samples from clustering;
+- GRCh38 rerun;
+- transcript-level DE;
+- inferential-replicate DE;
+- storing raw data in Git;
+- visualization without an analytical question.
+
+## 22. Architecture change control
+
+Material changes require:
+- a decision update in [DECISIONS.md](DECISIONS.md);
+- architecture/spec update when relevant;
+- review through PR before dependent execution.
+
+## 23. Completion definition
+
+Project complete means:
+- cohort provenance complete;
+- environment reproducible;
+- reference pinned/checksummed;
+- raw integrity verified;
+- QC/preprocessing frozen;
+- Salmon pilot frozen;
+- full quantification complete;
+- tximport validated;
+- Track A complete;
+- Track B complete;
+- validation passed;
+- publication benchmark complete;
+- disagreements explained;
+- compact provenance/config/results committed;
+- final report reproducible.
+
+A successful Salmon run alone is **not** project completion.
+
+## 24. Architecture freeze
+
+Architecture v2.0 is the execution baseline.
+
+New evidence may justify revision, but every material revision must be explicit, reviewable and traceable.
