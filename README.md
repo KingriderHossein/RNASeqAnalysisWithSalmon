@@ -6,11 +6,11 @@ Reproducible reanalysis of **GSE89223 / SRP092131 / PRJNA350714** using a **Salm
 
 How do gene-level differential-expression results from:
 
-\`FASTQ -> QC -> Salmon -> tximport -> DESeq2\`
+`FASTQ -> QC -> Salmon -> tximport -> DESeq2`
 
 compare with the original study's published:
 
-\`FastQC -> Cutadapt -> STAR (hg19) -> HTSeq -> edgeR\`
+`FastQC -> Cutadapt -> STAR (hg19) -> HTSeq -> edgeR`
 
 workflow?
 
@@ -38,7 +38,7 @@ The original study is:
 
 ## Pipeline
 
-\`\`\`text
+```text
 verified cohort
       |
       v
@@ -70,7 +70,7 @@ DESeq2
       |
       v
 gene-level comparison with the original paper
-\`\`\`
+```
 
 ## Project management
 
