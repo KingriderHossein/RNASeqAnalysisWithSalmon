@@ -4,8 +4,8 @@
 
 Work only on the reproducible GSE89223 reanalysis defined by:
 
-- \`docs/PROJECT-SPEC.md\` for project-level scope
-- \`docs/ARCHITECTURE.md\` for the technical pipeline and gates
+- `docs/PROJECT-SPEC.md` for project-level scope
+- `docs/ARCHITECTURE.md` for the technical pipeline and gates
 
 ## Required workflow
 
@@ -31,7 +31,7 @@ Work only on the reproducible GSE89223 reanalysis defined by:
 - Separate source metadata from analyst inference.
 - Preserve BPH, PCa tumor, and adjacent-normal labels explicitly.
 - Keep the paper-comparison track and paired sensitivity track distinct.
-- Use \`tx2gene\` from the same annotation release that defines the indexed transcripts.
+- Use `tx2gene` from the same annotation release that defines the indexed transcripts.
 - Do not feed TPM directly to DESeq2.
 - Report exclusions and outliers with a reason.
 - Do not tune Salmon parameters to maximize agreement with the original paper.
