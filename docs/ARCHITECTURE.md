@@ -122,7 +122,7 @@ Gate G2b:
 - the project records either \`no trimming required\` or the exact preprocessing rule
 - sample exclusion requires a documented reason independent of desired DE results
 
-## 5. Reference architecture
+## 5. Stage 4 — reference bundle and Salmon index
 
 ### Primary reference bundle
 
@@ -161,7 +161,7 @@ Gate G3:
 - decoy list and index command are reproducible
 - finished index reports the expected reference identity
 
-## 6. Salmon quantification architecture
+## 6. Stage 5 — Salmon quantification
 
 GSE89223 runs are single-end Ion Torrent Proton RNA-seq.
 
@@ -218,7 +218,7 @@ Gate G5:
 - Salmon QC metrics are summarized
 - failed or anomalous samples are resolved before R analysis
 
-## 7. Transcript-to-gene import
+## 7. Stage 6 — transcript-to-gene import
 
 Primary route:
 
@@ -240,7 +240,7 @@ Gate G6:
 - transcript-to-gene mapping losses are quantified and investigated
 - sample names exactly match metadata
 
-## 8. DESeq2 architecture
+## 8. Stage 7 — DESeq2
 
 Track A and Track B get separate DESeq2 objects/designs.
 
@@ -269,7 +269,7 @@ Gate G7:
 - contrasts are reproducible
 - QC/outlier decisions are documented
 
-## 9. Comparison with the original paper
+## 9. Stage 8 — comparison with the original paper
 
 Only after the Salmon -> tximport -> DESeq2 result is complete:
 
@@ -342,10 +342,10 @@ Issue -> branch -> implementation/evidence -> PR -> review -> main
 
 - #1 — Stage 0: metadata and cohort definition
 - #2 — Stage 1: reproducible environment
-- #3 — Stage 5: reference bundle and Salmon index
+- #3 — Stage 4: reference bundle and Salmon index
 - #4 — Stages 2-3: raw reads and QC
-- #5 — Stage 6: pilot + full Salmon quantification
-- #6 — Stages 7-9: tximport, DESeq2, and paper comparison
+- #5 — Stage 5: pilot + full Salmon quantification
+- #6 — Stages 6-8: tximport, DESeq2, and paper comparison
 
 The stage numbers describe pipeline order. Issue numbers are management identities and need not match stage numbers.
 
