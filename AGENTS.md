@@ -1,38 +1,53 @@
 # AGENTS.md
 
-## Project boundary
+## Canonical project authority
 
-Work only on the reproducible GSE89223 reanalysis defined by:
+Read these before implementation:
+- `docs/PROJECT-SPEC.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DECISIONS.md`
+- `docs/DATA-CONTRACTS.md`
+- `docs/VALIDATION.md`
+- `docs/GOVERNANCE.md`
 
-- `docs/PROJECT-SPEC.md` for project-level scope
-- `docs/ARCHITECTURE.md` for the technical pipeline and gates
+## Mandatory scientific rules
 
-## Required workflow
-
-1. Read the relevant GitHub Issue before starting work.
-2. Follow the Salmon-first architecture; do not introduce STAR/HTSeq/edgeR into the primary execution path.
-3. Do not infer sample groups or patient pairing from file order.
-4. Prefer accession-driven, scripted operations.
-5. Pin reference and annotation versions before building indexes.
-6. Record tool versions and the exact analysis configuration used for results.
-7. For single-end Salmon quantification, do not silently accept fragment-length assumptions; pass the architecture's pilot gate first.
-8. Keep changes bounded to the active Issue.
-9. Use a branch/PR for substantive repository changes.
+1. Primary pipeline: `FASTQ → QC → Salmon → tximport → DESeq2`.
+2. STAR/HTSeq/edgeR is comparator-only unless scope changes explicitly.
+3. GSE89223 is total-RNA/rRNA-depleted whole-transcriptome data, not strict Poly(A)+ mRNA-seq.
+4. Track A and Track B stay separate.
+5. Primary reference is GENCODE v19 comprehensive / GRCh37.p13.
+6. Never mix annotation releases.
+7. tx2gene comes from the same GTF as the reference.
+8. TPM is not DESeq2 raw count input.
+9. Full Salmon quantification requires pilot Gate G5.
+10. Never tune parameters against publication overlap.
+11. Never exclude samples merely to improve PCA, mapping or agreement.
+12. Published results are comparator evidence, not ground truth.
+13. Every result must have analysis_id and provenance.
 
 ## Data rules
 
-- Never commit FASTQ, SRA, BAM, CRAM, Salmon indexes, large reference FASTA/GTF files, or package caches.
-- Do not delete raw data until the required derived outputs are verified.
-- Do not modify or mount unrelated storage merely for convenience.
-- Do not include credentials, access tokens, or private machine configuration in the repository.
+Never commit:
+- FASTQ/SRA;
+- large reference FASTA/GTF copies;
+- Salmon indexes;
+- large temporary/intermediate data;
+- credentials;
+- package caches.
 
-## Scientific rules
+## Work rules
 
-- Separate source metadata from analyst inference.
-- Preserve BPH, PCa tumor, and adjacent-normal labels explicitly.
-- Keep the paper-comparison track and paired sensitivity track distinct.
-- Use `tx2gene` from the same annotation release that defines the indexed transcripts.
-- Do not feed TPM directly to DESeq2.
-- Report exclusions and outliers with a reason.
-- Do not tune Salmon parameters to maximize agreement with the original paper.
-- Do not claim reproduction of the paper unless cohort, reference, annotation, quantification, and statistical differences are documented.
+- read the relevant Issue;
+- obey stage dependencies;
+- use branch + PR for substantive changes;
+- record material architecture changes in `docs/DECISIONS.md`;
+- pass the relevant validation gate before dependent work;
+- never infer biology from filename/order/clustering alone;
+- do not hide scientific decisions in scripts or chat.
+
+## Architecture-phase boundary
+
+Architecture finalization permits documentation, project structure and work-item design only.
+
+Do not perform raw download, index construction, Salmon quantification, tximport, DESeq2 or other substantive pipeline execution during architecture finalization.
