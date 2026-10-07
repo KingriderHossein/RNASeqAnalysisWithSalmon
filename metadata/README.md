@@ -7,7 +7,7 @@ The manifest is built from two source files:
 - `GSE89223_family.soft.gz` — GEO family SOFT, accession `GSE89223`.
 - `SRP092131_runinfo.csv` — NCBI SRA RunInfo, study `SRP092131`.
 
-The source files are retained locally for provenance. The derived TSV is suitable for version control.
+The source files are retained locally for provenance and are not committed. Recreate them with `bash scripts/fetch_metadata.sh`, then rebuild the derived manifest with `python3 scripts/build_manifest.py`. The derived TSV is suitable for version control.
 
 ## Derived manifest
 
