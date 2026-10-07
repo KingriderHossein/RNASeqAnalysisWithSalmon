@@ -1,12 +1,20 @@
 # RNASeqAnalysisWithSalmon
 
-Reproducible reanalysis of **GSE89223 / SRP092131 / PRJNA350714** using Salmon for transcript quantification, gene-level summarization with tximport/tximeta, and differential expression with DESeq2.
+Reproducible reanalysis of **GSE89223 / SRP092131 / PRJNA350714** using a **Salmon-first** workflow for transcript quantification, gene-level summarization with tximport, and differential expression with DESeq2.
 
 ## Scientific question
 
-How do gene-level differential-expression results from a Salmon-based workflow compare with the original study pipeline:
+How do gene-level differential-expression results from:
 
-`FastQC -> Cutadapt -> STAR (hg19) -> HTSeq -> edgeR`?
+`FASTQ -> QC -> Salmon -> tximport -> DESeq2`
+
+compare with the original study's published:
+
+`FastQC -> Cutadapt -> STAR (hg19) -> HTSeq -> edgeR`
+
+workflow?
+
+The STAR/HTSeq/edgeR workflow is a **final comparator only**. It is not part of this project's primary execution path.
 
 The original study is:
 
@@ -20,33 +28,48 @@ The original study is:
 - Organism: Homo sapiens
 - Platform: Ion Torrent Proton
 - Material: FFPE prostate cancer / adjacent-normal and BPH tissues
-- Public SRA record: 32 experiments, approximately 37 Gbases / 28.8 GB archived data
+- Library layout: single-end
 
-## Planned workflow
+## Authoritative project docs
+
+- [Project specification](docs/PROJECT-SPEC.md) — outcome, success criteria, and non-goals
+- [Analysis architecture](docs/ARCHITECTURE.md) — Salmon-first technical flow and scientific gates
+- [Agent/project rules](AGENTS.md) — execution and data-safety rules
+
+## Pipeline
 
 ```text
-GEO/SRA metadata
+verified cohort
       |
       v
-verified sample manifest
+raw single-end reads
       |
       v
-raw reads -> FastQC/MultiQC
+FastQC / MultiQC
       |
       v
-reference transcriptome -> Salmon index
+GENCODE v19 / GRCh37 reference bundle
       |
       v
-Salmon quantification
+decoy-aware Salmon index
       |
       v
-tximport / tximeta
+single-end Salmon pilot
       |
       v
-DESeq2 gene-level analysis
+frozen Salmon configuration
       |
       v
-comparison with original STAR/HTSeq/edgeR results
+full Salmon quantification
+      |
+      v
+tximport
+      |
+      v
+DESeq2
+      |
+      v
+gene-level comparison with the original paper
 ```
 
 ## Project management
@@ -60,8 +83,6 @@ GitHub Issues are the source of truth for active work:
 5. #5 Quantify GSE89223 with Salmon
 6. #6 Gene-level DESeq2 analysis and comparison with the original study
 
-See [docs/PROJECT-SPEC.md](docs/PROJECT-SPEC.md) for the durable project scope.
-
 ## Data policy
 
-Raw sequencing data, reference indexes, large intermediate files, and generated caches are **not committed to Git**. Only metadata, code, small reproducibility artifacts, summaries, and final analysis outputs appropriate for version control belong in the repository.
+Raw sequencing data, reference FASTA files, Salmon indexes, large intermediates, and package caches are **not committed to Git**. The repository contains metadata, code, configuration, provenance, compact QC summaries, and analysis outputs suitable for version control.
