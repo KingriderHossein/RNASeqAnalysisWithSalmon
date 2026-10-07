@@ -8,14 +8,14 @@ The stable technical workflow and decision gates are defined in [ARCHITECTURE.md
 
 ## Primary execution path
 
-\`\`\`text
+```text
 raw reads
 -> FastQC / MultiQC
 -> Salmon
 -> tximport
 -> DESeq2
 -> gene-level result
-\`\`\`
+```
 
 The original paper's STAR -> HTSeq -> edgeR pipeline is not rerun as part of the primary workflow. It is used as an external comparator after the Salmon-based result is complete.
 
@@ -23,13 +23,13 @@ The original paper's STAR -> HTSeq -> edgeR pipeline is not rerun as part of the
 
 The paper used:
 
-\`\`\`text
+```text
 FastQC
 -> Cutadapt
 -> STAR against hg19
 -> HTSeq with GENCODE release 19
 -> edgeR
-\`\`\`
+```
 
 The comparison must distinguish effects caused by:
 - sample inclusion/exclusion
@@ -87,7 +87,7 @@ Large data and indexes stay outside the repository. Any local deletion of raw da
 ## Project truth
 
 - Durable project intent: this file
-- Stable technical architecture: \`docs/ARCHITECTURE.md\`
+- Stable technical architecture: `docs/ARCHITECTURE.md`
 - Active tasks/blockers: GitHub Issues
 - Implementation and analysis history: commits and pull requests
 - Runtime evidence: analysis outputs and logs tied to relevant code/configuration versions
