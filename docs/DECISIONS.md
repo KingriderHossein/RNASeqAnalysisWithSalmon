@@ -24,7 +24,7 @@ This file records the scientific and engineering decisions that define the proje
 - No sample is excluded merely because removal improves PCA, mapping or agreement with the paper.
 - Internal canonical GENCODE IDs are preserved; normalized comparison IDs are separate.
 - No hidden batch correction is added to Track A without documented evidence and review.
-- Git stores compact metadata/configuration/provenance/results; raw FASTQ/SRA, large reference files and Salmon indexes stay outside Git.
+- Git stores compact metadata/configuration/provenance/results; raw FASTQ/SRA, large reference files and Salmon indexes stay outside Git.\n- Execution architecture: one shared Python Core serves both a CLI and a desktop GUI implemented with HTML/CSS/JavaScript through a local Python bridge.\n- The automation pipeline is delivered incrementally by module; the current first implementation module is acquisition/download.\n- Long-running modules must persist recoverable state. Download interruption, application restart, and transient network loss must not require restarting completed work from zero.\n- Recommended disk-space shortfall is a warning, not by itself a hard block; unwritable/invalid destinations and proven impossible writes may block execution.
 - The primary project compares complete pipelines, not Salmon alone vs STAR alone.
 
 ## Architecture change control
