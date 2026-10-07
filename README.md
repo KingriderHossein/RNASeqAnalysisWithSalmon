@@ -46,7 +46,8 @@ The primary project is therefore a **whole-transcriptome expression reanalysis**
 | Document | Purpose |
 |---|---|
 | [PROJECT-SPEC](docs/PROJECT-SPEC.md) | Goal, scope, deliverables, completion |
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | Full scientific end-to-end architecture |\n| [AUTOMATION-PIPELINE](docs/AUTOMATION-PIPELINE.md) | Modular execution architecture from acquisition through final report |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | Full scientific end-to-end architecture |
+| [AUTOMATION-PIPELINE](docs/AUTOMATION-PIPELINE.md) | Modular execution architecture from acquisition through final report |
 | [DECISIONS](docs/DECISIONS.md) | Frozen scientific/engineering decisions |
 | [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) | Schemas, identities, provenance |
 | [VALIDATION](docs/VALIDATION.md) | Gates and rejection rules |
