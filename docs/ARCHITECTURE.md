@@ -2,13 +2,13 @@
 
 Status: **technical baseline for the Salmon-first workflow**
 
-This document owns the stable technical architecture of the GSE89223 reanalysis. GitHub Issues own live task state. \`docs/PROJECT-SPEC.md\` owns project-level intent.
+This document owns the stable technical architecture of the GSE89223 reanalysis. GitHub Issues own live task state. `docs/PROJECT-SPEC.md` owns project-level intent.
 
 ## 1. Architectural objective
 
 Reanalyse GSE89223 with a workflow whose **primary quantification path is Salmon**:
 
-\`\`\`text
+```text
 verified cohort
     -> raw single-end reads
     -> read QC
@@ -18,7 +18,7 @@ verified cohort
     -> tximport gene summarization
     -> DESeq2
     -> gene-level comparison with the published study
-\`\`\`
+```
 
 The original STAR -> HTSeq -> edgeR workflow is **not** part of the execution path. It is the external comparator used at the final interpretation stage.
 
@@ -27,7 +27,7 @@ The original STAR -> HTSeq -> edgeR workflow is **not** part of the execution pa
 1. Salmon is the only primary transcript quantifier.
 2. No sample reaches full quantification before metadata, reference, and single-end parameter gates pass.
 3. All samples in one analysis track use the same reference bundle, Salmon index, preprocessing policy, and quantification configuration.
-4. \`tx2gene\` must come from the same annotation release used to define the indexed transcripts.
+4. `tx2gene` must come from the same annotation release used to define the indexed transcripts.
 5. TPM values are not supplied directly to DESeq2.
 6. Raw sequencing data and Salmon indexes stay outside Git.
 7. The paper-comparison analysis and sensitivity analyses remain separate.
@@ -39,7 +39,7 @@ The original STAR -> HTSeq -> edgeR workflow is **not** part of the execution pa
 
 Purpose: maximize interpretability of differences between this Salmon workflow and the published analysis.
 
-- Cohort: the verified paper-comparison cohort defined in \`metadata/COHORTS.md\`.
+- Cohort: the verified paper-comparison cohort defined in `metadata/README.md` and `metadata/derived/GSE89223_sample_manifest.tsv`.
 - Reference context: GENCODE Release 19 / GRCh37.p13, matching the original paper's hg19 + GENCODE 19 context as closely as practical.
 - Output: the primary gene-level DEG result used for comparison with the publication.
 
@@ -47,8 +47,8 @@ Purpose: maximize interpretability of differences between this Salmon workflow a
 
 Purpose: test robustness in verified matched PCa tumor/adjacent-normal pairs.
 
-- Cohort: the verified matched-pair cohort defined in \`metadata/COHORTS.md\`.
-- DE design: paired model, conceptually \`~ patient + condition\`.
+- Cohort: the verified matched-pair cohort defined in `metadata/README.md` and `metadata/derived/GSE89223_sample_manifest.tsv`.
+- DE design: paired model, conceptually `~ patient + condition`.
 - Uses the same Salmon reference/index/quantification outputs where samples overlap Track A.
 - Remains secondary and must not replace Track A in the paper-comparison report.
 
@@ -86,7 +86,7 @@ Required components:
 - R
 - tximport
 - DESeq2
-- packages/scripts required to construct \`tx2gene\`
+- packages/scripts required to construct `tx2gene`
 
 Gate G1:
 - Salmon binary identity and exact version are verified
@@ -119,7 +119,7 @@ Policy:
 
 Gate G2b:
 - QC is reviewed
-- the project records either \`no trimming required\` or the exact preprocessing rule
+- the project records either `no trimming required` or the exact preprocessing rule
 - sample exclusion requires a documented reason independent of desired DE results
 
 ## 5. Stage 4 — reference bundle and Salmon index
@@ -143,17 +143,17 @@ Record:
 
 ### Decoy-aware Salmon index
 
-\`\`\`text
+```text
 GENCODE v19 transcript FASTA
         +
 matching GRCh37 genome FASTA as decoys
         -> decoy-aware target
         -> salmon index
-\`\`\`
+```
 
 Salmon 2.x selective alignment is the primary mapping mode. The matching genome is used as decoy sequence.
 
-Initial k-mer choice: \`k=31\`. The study read lengths are predominantly above the range for which Salmon documents k=31 as a normal choice. If pilot mapping is unexpectedly poor and short-read content is implicated, an alternate k-mer index may be evaluated as a technical sensitivity test. Indexes must never be mixed within one analysis track.
+Initial k-mer choice: `k=31`. The study read lengths are predominantly above the range for which Salmon documents k=31 as a normal choice. If pilot mapping is unexpectedly poor and short-read content is implicated, an alternate k-mer index may be evaluated as a technical sensitivity test. Indexes must never be mixed within one analysis track.
 
 Gate G3:
 - reference checksums are recorded
@@ -167,13 +167,13 @@ GSE89223 runs are single-end Ion Torrent Proton RNA-seq.
 
 ### Library type
 
-Pilot quantification uses \`-l A\` so Salmon can infer the library type. The detected type must be recorded from Salmon metadata/logs.
+Pilot quantification uses `-l A` so Salmon can infer the library type. The detected type must be recorded from Salmon metadata/logs.
 
 If library-preparation documentation and observed behavior disagree, resolve the discrepancy before full quantification.
 
 ### Single-end fragment-length distribution
 
-For single-end reads Salmon cannot empirically recover the fragment-length distribution from paired mappings. Therefore \`--fldMean\` and \`--fldSD\` are a **pre-full-run technical decision gate**.
+For single-end reads Salmon cannot empirically recover the fragment-length distribution from paired mappings. Therefore `--fldMean` and `--fldSD` are a **pre-full-run technical decision gate**.
 
 Policy:
 1. seek library-preparation evidence for expected fragment size
@@ -197,7 +197,7 @@ Pilot acceptance:
 - fragment-length prior is frozen
 - mapping/assignment statistics are credible
 - no systematic input/reference incompatibility is visible
-- valid \`quant.sf\` and Salmon metadata are produced
+- valid `quant.sf` and Salmon metadata are produced
 
 Gate G4:
 - one immutable Salmon quantification configuration is approved for full execution
@@ -206,12 +206,12 @@ Gate G4:
 
 Each sample gets an independent output directory:
 
-\`\`\`text
+```text
 external_results/salmon/<SAMPLE>/
   quant.sf
   cmd_info.json
   aux_info/...
-\`\`\`
+```
 
 Gate G5:
 - all expected samples complete with one index and one parameter configuration
@@ -222,15 +222,15 @@ Gate G5:
 
 Primary route:
 
-\`\`\`text
+```text
 quant.sf files
     -> tximport(type = "salmon", tx2gene = ...)
     -> gene-level counts + abundance + effective-length information
     -> DESeqDataSetFromTximport(...)
-\`\`\`
+```
 
 Rules:
-- construct \`tx2gene\` from the exact GENCODE v19 GTF used by the reference bundle
+- construct `tx2gene` from the exact GENCODE v19 GTF used by the reference bundle
 - transcript ID/version handling must be explicit
 - use tximport/DESeq2 integration instead of feeding TPM directly to DESeq2
 - verify imported sample order against the manifest
@@ -273,11 +273,11 @@ Gate G7:
 
 Only after the Salmon -> tximport -> DESeq2 result is complete:
 
-\`\`\`text
+```text
 our gene-level results
         vs
 published STAR -> HTSeq -> edgeR results
-\`\`\`
+```
 
 Compare where evidence allows:
 - number of DE genes
@@ -294,7 +294,7 @@ The project does **not** rerun STAR/HTSeq/edgeR unless a future task explicitly 
 
 Version-controlled:
 
-\`\`\`text
+```text
 README.md
 docs/
   PROJECT-SPEC.md
@@ -308,21 +308,21 @@ results/
   salmon_summary/
   deseq2/
   comparison/
-\`\`\`
+```
 
 Not version-controlled:
 
-\`\`\`text
+```text
 raw FASTQ/SRA
 reference genome/transcript FASTA
 Salmon indexes
 large temporary/intermediate data
 package caches
-\`\`\`
+```
 
 Recommended external working layout:
 
-\`\`\`text
+```text
 <project-data>/
   raw/
   references/
@@ -330,13 +330,13 @@ Recommended external working layout:
   salmon/
   qc/
   tmp/
-\`\`\`
+```
 
 GitHub Issues are the source of truth for active work:
 
-\`\`\`text
+```text
 Issue -> branch -> implementation/evidence -> PR -> review -> main
-\`\`\`
+```
 
 ## 11. Issue-to-stage map
 
