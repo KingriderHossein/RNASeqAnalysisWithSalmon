@@ -5,7 +5,7 @@ Reproducible **Salmon-first reanalysis of GSE89223 prostate-cancer RNA-seq**.
 ## In one line
 
 ```text
-GSE89223 → QC → Salmon → tximport → DESeq2 → validation → publication comparison
+GSE89223 → acquisition → QC → Salmon → tximport → DESeq2 → validation → publication comparison
 ```
 
 The original `STAR → HTSeq → edgeR` workflow is comparator-only.
@@ -46,7 +46,8 @@ The primary project is therefore a **whole-transcriptome expression reanalysis**
 | Document | Purpose |
 |---|---|
 | [PROJECT-SPEC](docs/PROJECT-SPEC.md) | Goal, scope, deliverables, completion |
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | Full end-to-end architecture |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | Full scientific end-to-end architecture |
+| [AUTOMATION-PIPELINE](docs/AUTOMATION-PIPELINE.md) | Modular execution architecture from acquisition through final report |
 | [DECISIONS](docs/DECISIONS.md) | Frozen scientific/engineering decisions |
 | [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) | Schemas, identities, provenance |
 | [VALIDATION](docs/VALIDATION.md) | Gates and rejection rules |

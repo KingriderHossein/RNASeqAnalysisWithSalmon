@@ -7,7 +7,8 @@ This is the canonical technical map for the GSE89223 project. Detailed scientifi
 ## Canonical architecture set
 
 - [PROJECT-SPEC.md](PROJECT-SPEC.md) — goal, scope, deliverables, completion
-- [ARCHITECTURE.md](ARCHITECTURE.md) — end-to-end stage model
+- [ARCHITECTURE.md](ARCHITECTURE.md) — end-to-end scientific stage model
+- [AUTOMATION-PIPELINE.md](AUTOMATION-PIPELINE.md) — modular execution/orchestration architecture
 - [DECISIONS.md](DECISIONS.md) — frozen scientific/engineering decisions
 - [DATA-CONTRACTS.md](DATA-CONTRACTS.md) — schemas, identities, provenance
 - [VALIDATION.md](VALIDATION.md) — stage gates and rejection rules
@@ -133,6 +134,8 @@ Stage 11 Final report / reproducibility closure
 ```
 
 Dependent stages cannot be accepted before their required gate passes.
+
+The execution/orchestration layer that progressively automates these stages is defined in [AUTOMATION-PIPELINE.md](AUTOMATION-PIPELINE.md). The first implementation module is the resumable cross-platform Acquisition / Download Manager.
 
 ## 5. Stage 0 — Architecture freeze
 
