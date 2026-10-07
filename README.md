@@ -1,88 +1,139 @@
 # RNASeqAnalysisWithSalmon
 
-Reproducible reanalysis of **GSE89223 / SRP092131 / PRJNA350714** using a **Salmon-first** workflow for transcript quantification, gene-level summarization with tximport, and differential expression with DESeq2.
+Reproducible **Salmon-first reanalysis of GSE89223 prostate-cancer RNA-seq**.
 
-## Scientific question
-
-How do gene-level differential-expression results from:
-
-`FASTQ -> QC -> Salmon -> tximport -> DESeq2`
-
-compare with the original study's published:
-
-`FastQC -> Cutadapt -> STAR (hg19) -> HTSeq -> edgeR`
-
-workflow?
-
-The STAR/HTSeq/edgeR workflow is a **final comparator only**. It is not part of this project's primary execution path.
-
-The original study is:
-
-> Nikitina AS et al. *Novel RNA biomarkers of prostate cancer revealed by RNA-seq analysis of formalin-fixed samples obtained from Russian patients.* Oncotarget. 2017. DOI: 10.18632/oncotarget.16518.
-
-## Primary data
-
-- GEO: GSE89223
-- SRA: SRP092131
-- BioProject: PRJNA350714
-- Organism: Homo sapiens
-- Platform: Ion Torrent Proton
-- Material: FFPE prostate cancer / adjacent-normal and BPH tissues
-- Library layout: single-end
-
-## Authoritative project docs
-
-- [Project specification](docs/PROJECT-SPEC.md) — outcome, success criteria, and non-goals
-- [Analysis architecture](docs/ARCHITECTURE.md) — Salmon-first technical flow and scientific gates
-- [Agent/project rules](AGENTS.md) — execution and data-safety rules
-
-## Pipeline
+## In one line
 
 ```text
-verified cohort
-      |
-      v
-raw single-end reads
-      |
-      v
-FastQC / MultiQC
-      |
-      v
-GENCODE v19 / GRCh37 reference bundle
-      |
-      v
-decoy-aware Salmon index
-      |
-      v
-single-end Salmon pilot
-      |
-      v
-frozen Salmon configuration
-      |
-      v
-full Salmon quantification
-      |
-      v
-tximport
-      |
-      v
-DESeq2
-      |
-      v
-gene-level comparison with the original paper
+GSE89223 → QC → Salmon → tximport → DESeq2 → validation → publication comparison
 ```
 
-## Project management
+The original `STAR → HTSeq → edgeR` workflow is comparator-only.
 
-GitHub Issues are the source of truth for active work:
+## Dataset caveat
 
-1. #1 Validate GSE89223 metadata and build sample manifest
-2. #2 Define reproducible computational environment
-3. #3 Build and verify human transcriptome Salmon index
-4. #4 Retrieve raw reads and run pre-quantification QC
-5. #5 Quantify GSE89223 with Salmon
-6. #6 Gene-level DESeq2 analysis and comparison with the original study
+GSE89223 is FFPE, Ion Torrent Proton, single-end, total-RNA/rRNA-depleted RNA-seq. It is **not strict Poly(A)+ mRNA-seq**.
 
-## Data policy
+The primary project is therefore a **whole-transcriptome expression reanalysis**.
 
-Raw sequencing data, reference FASTA files, Salmon indexes, large intermediates, and package caches are **not committed to Git**. The repository contains metadata, code, configuration, provenance, compact QC summaries, and analysis outputs suitable for version control.
+## Tracks
+
+### Track A
+10 tumor vs 12 control, matching the paper's final comparison cohort.
+
+### Track B
+9 matched PCa tumor/adjacent-normal pairs.
+
+## Stage map
+
+```text
+0  Architecture freeze
+1  Sample/cohort lock
+2  Reproducible environment
+3  GENCODE v19 / GRCh37 reference
+4  Raw reads + QC/preprocessing decision
+5  Salmon pilot
+6  Full Salmon quantification
+7  tximport → gene level
+8  DESeq2
+9  Validation
+10 Publication benchmark
+11 Final report / reproducibility closure
+```
+
+## Canonical documentation
+
+| Document | Purpose |
+|---|---|
+| [PROJECT-SPEC](docs/PROJECT-SPEC.md) | Goal, scope, deliverables, completion |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | Full end-to-end architecture |
+| [DECISIONS](docs/DECISIONS.md) | Frozen scientific/engineering decisions |
+| [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) | Schemas, identities, provenance |
+| [VALIDATION](docs/VALIDATION.md) | Gates and rejection rules |
+| [GOVERNANCE](docs/GOVERNANCE.md) | GitHub workflow and change control |
+| [Metadata provenance](metadata/README.md) | Sample/cohort provenance |
+| [AGENTS](AGENTS.md) | Mandatory implementation rules |
+
+## Primary reference
+
+```text
+GRCh37.p13
++
+GENCODE Release 19 comprehensive GTF
++
+comprehensive transcript FASTA derived from genome + GTF
++
+matching genome decoys
+```
+
+A protein-coding-only reference is not sufficient for the primary benchmark.
+
+## Primary DE designs
+
+Track A:
+
+```r
+~ group
+```
+
+Track B:
+
+```r
+~ patient + condition
+```
+
+Primary DEG definition:
+
+```text
+BH-adjusted p-value < 0.05
+```
+
+## GitHub workflow
+
+```text
+Issue → branch → implementation/evidence → validation → PR → review → main
+```
+
+## Storage policy
+
+Commit:
+- metadata;
+- configuration;
+- scripts;
+- checksums/provenance;
+- compact QC/results;
+- reports.
+
+Do not commit:
+- FASTQ/SRA;
+- large reference files;
+- Salmon indexes;
+- large intermediates;
+- caches;
+- credentials.
+
+## Completion
+
+A successful Salmon run is not project completion.
+
+Completion requires:
+- verified cohort;
+- reproducible environment;
+- pinned/checksummed reference;
+- frozen QC/preprocessing;
+- frozen Salmon pilot;
+- full quantification;
+- validated tximport;
+- Track A + Track B DESeq2;
+- validation;
+- publication benchmark;
+- explained differences;
+- reproducible final report.
+
+## Primary study
+
+Nikitina AS et al. *Novel RNA biomarkers of prostate cancer revealed by RNA-seq analysis of formalin-fixed samples obtained from Russian patients.* Oncotarget. 2017. DOI: 10.18632/oncotarget.16518
+
+## Current state
+
+**Architecture v2.0 is the frozen execution baseline.**
