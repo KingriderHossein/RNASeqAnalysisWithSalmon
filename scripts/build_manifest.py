@@ -12,6 +12,18 @@ OUT = ROOT / "metadata/derived/GSE89223_sample_manifest.tsv"
 # Final differential-expression cohort reported by Nikitina et al. 2017.
 PAPER_TUMOR = {"BP3","CP1","CP2","CP3","CP8","CP11","CP12","CP13","CP14","CP15"}
 PAPER_CONTROL = {"BN3","CN1","CN3","CN8","CN11","CN12","CN13","CN14","CN15","BN1","BP1","BP2"}
+EXCLUSION_REASONS = {
+    "CP5": "pair excluded: CN5 section contained substantial seminal vesicle tissue",
+    "CN5": "pair excluded: CN5 section contained substantial seminal vesicle tissue",
+    "CP6": "pair excluded: tumor section contained very small tumor fraction and high normal-tissue contribution",
+    "CN6": "pair excluded because counterpart CP6 had insufficient tumor fraction",
+    "CP7": "pair excluded: tumor section contained very small tumor fraction and high normal-tissue contribution",
+    "CN7": "pair excluded because counterpart CP7 had insufficient tumor fraction",
+    "CP9": "pair excluded: tumor/normal regions could not be cleanly separated because of infiltrative growth",
+    "CN9": "pair excluded: tumor/normal regions could not be cleanly separated because of infiltrative growth",
+    "CP10": "pair excluded: tumor section contained a substantial area of normal tissue",
+    "CN10": "pair excluded because counterpart CP10 contained substantial normal tissue",
+}
 
 def parse_soft(path):
     records = []
@@ -67,6 +79,8 @@ def main():
         flags = []
         if title.startswith("B") and diagnosis == "prostate cancer":
             flags.append("B-prefix but GEO diagnosis=prostate cancer; paper confirms record correction")
+        if title == "CP2" and ch.get("psa level (ng/ml)", "") == "13.5":
+            flags.append("GEO PSA=13.5 differs from paper Table 1 PSA=8.6")
         if not run:
             flags.append("no SRA RunInfo match")
         paper_group = "tumor" if title in PAPER_TUMOR else "control" if title in PAPER_CONTROL else "excluded"
@@ -80,6 +94,7 @@ def main():
             "pair_status": "pending",
             "paper_final_set": "yes" if paper_group != "excluded" else "no",
             "paper_group": paper_group,
+            "paper_exclusion_reason": EXCLUSION_REASONS.get(title, ""),
             "paired_pca_sensitivity": "pending",
             "srx": record.get("srx", ""),
             "run": run.get("Run", ""),
