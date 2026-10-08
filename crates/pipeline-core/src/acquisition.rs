@@ -147,6 +147,13 @@ impl From<SraPlanError> for AcquisitionError {
     }
 }
 
+#[derive(Clone, Copy)]
+struct AttemptContext<'a> {
+    attempt: i64,
+    log_root: &'a Path,
+    stop: &'a StopToken,
+}
+
 pub struct SraAcquisitionExecutor<'a, R: CommandRunner> {
     planner: &'a SraToolkitPlanner,
     runner: &'a R,
@@ -203,7 +210,16 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             }
             RunState::Downloaded => {
                 let attempt = store.begin_run_attempt(run_id)?;
-                self.run_validation(store, run_id, attempt, log_root.as_ref(), stop, None)
+                self.run_validation(
+                    store,
+                    run_id,
+                    AttemptContext {
+                        attempt,
+                        log_root: log_root.as_ref(),
+                        stop,
+                    },
+                    None,
+                )
             }
             RunState::Failed => match current.last_checkpoint.as_deref() {
                 Some(PREFETCH_CHECKPOINT) => {
@@ -214,16 +230,27 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                         store,
                         run_id,
                         &accession,
-                        attempt,
                         plan,
-                        log_root.as_ref(),
-                        stop,
+                        AttemptContext {
+                            attempt,
+                            log_root: log_root.as_ref(),
+                            stop,
+                        },
                     )
                 }
                 Some(VALIDATION_CHECKPOINT) => {
                     let attempt = store.begin_run_attempt(run_id)?;
                     store.retry_run(run_id, RunState::Validating, Some(VALIDATION_CHECKPOINT))?;
-                    self.run_validation(store, run_id, attempt, log_root.as_ref(), stop, None)
+                    self.run_validation(
+                        store,
+                        run_id,
+                        AttemptContext {
+                            attempt,
+                            log_root: log_root.as_ref(),
+                            stop,
+                        },
+                        None,
+                    )
                 }
                 other => Err(AcquisitionError::UnknownFailedCheckpoint(
                     other.map(str::to_owned),
@@ -238,20 +265,18 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         store: &mut StateStore,
         run_id: &RunId,
         accession: &Accession,
-        attempt: i64,
         plan: crate::PrefetchPlan,
-        log_root: &Path,
-        stop: &StopToken,
+        attempt_context: AttemptContext<'_>,
     ) -> Result<AcquisitionResult, AcquisitionError> {
         let context = self.process_context(
             store,
             run_id,
             accession,
-            attempt,
+            attempt_context.attempt,
             AcquisitionStage::Prefetch,
-            log_root,
+            attempt_context.log_root,
         )?;
-        let outcome = match self.runner.run(&plan.command, &context, stop) {
+        let outcome = match self.runner.run(&plan.command, &context, attempt_context.stop) {
             Ok(outcome) => outcome,
             Err(source) => {
                 self.persist_process_error(
@@ -273,7 +298,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                 store.transition_run(run_id, RunState::Paused, Some(PREFETCH_CHECKPOINT), None)?;
             return Ok(AcquisitionResult {
                 run,
-                attempt: Some(attempt),
+                attempt: Some(attempt_context.attempt),
                 disposition: AcquisitionDisposition::Paused {
                     stage: AcquisitionStage::Prefetch,
                 },
@@ -295,7 +320,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             )?;
             return Ok(AcquisitionResult {
                 run,
-                attempt: Some(attempt),
+                attempt: Some(attempt_context.attempt),
                 disposition: AcquisitionDisposition::Failed {
                     stage: AcquisitionStage::Prefetch,
                     reason,
@@ -318,7 +343,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             )?;
             return Ok(AcquisitionResult {
                 run,
-                attempt: Some(attempt),
+                attempt: Some(attempt_context.attempt),
                 disposition: AcquisitionDisposition::Failed {
                     stage: AcquisitionStage::Prefetch,
                     reason,
@@ -344,16 +369,14 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             None,
         )?;
 
-        self.run_validation(store, run_id, attempt, log_root, stop, Some(outcome))
+        self.run_validation(store, run_id, attempt_context, Some(outcome))
     }
 
     fn run_validation(
         &self,
         store: &mut StateStore,
         run_id: &RunId,
-        attempt: i64,
-        log_root: &Path,
-        stop: &StopToken,
+        attempt_context: AttemptContext<'_>,
         prefetch_outcome: Option<CommandOutcome>,
     ) -> Result<AcquisitionResult, AcquisitionError> {
         let current = store
@@ -414,11 +437,11 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             store,
             run_id,
             &accession,
-            attempt,
+            attempt_context.attempt,
             AcquisitionStage::Validation,
-            log_root,
+            attempt_context.log_root,
         )?;
-        let outcome = match self.runner.run(&plan.command, &context, stop) {
+        let outcome = match self.runner.run(&plan.command, &context, attempt_context.stop) {
             Ok(outcome) => outcome,
             Err(source) => {
                 self.persist_process_error(
@@ -453,7 +476,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             )?;
             return Ok(AcquisitionResult {
                 run,
-                attempt: Some(attempt),
+                attempt: Some(attempt_context.attempt),
                 disposition: AcquisitionDisposition::Failed {
                     stage: AcquisitionStage::Validation,
                     reason,
@@ -471,7 +494,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         )?;
         Ok(AcquisitionResult {
             run,
-            attempt: Some(attempt),
+            attempt: Some(attempt_context.attempt),
             disposition: AcquisitionDisposition::SraValid,
             prefetch: prefetch_outcome,
             validation: Some(outcome),
