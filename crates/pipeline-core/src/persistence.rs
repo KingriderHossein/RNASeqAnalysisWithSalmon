@@ -506,6 +506,60 @@ impl StateStore {
         })
     }
 
+    pub fn begin_run_attempt(&mut self, id: &RunId) -> Result<i64, StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let changed = transaction.execute(
+            "UPDATE runs
+             SET attempt_count = attempt_count + 1, updated_at = ?2
+             WHERE run_id = ?1",
+            params![id.as_str(), unix_timestamp()],
+        )?;
+
+        if changed == 0 {
+            return Err(StoreError::NotFound {
+                kind: "run",
+                id: id.to_string(),
+            });
+        }
+
+        let attempt_count = transaction.query_row(
+            "SELECT attempt_count FROM runs WHERE run_id = ?1",
+            params![id.as_str()],
+            |row| row.get::<_, i64>(0),
+        )?;
+        transaction.commit()?;
+
+        Ok(attempt_count)
+    }
+
+    pub fn update_run_download_snapshot(
+        &self,
+        id: &RunId,
+        downloaded_bytes: i64,
+        sra_path: &str,
+    ) -> Result<(), StoreError> {
+        let changed = self.connection.execute(
+            "UPDATE runs
+             SET downloaded_bytes = ?2,
+                 sra_path = ?3,
+                 updated_at = ?4
+             WHERE run_id = ?1",
+            params![id.as_str(), downloaded_bytes, sra_path, unix_timestamp()],
+        )?;
+
+        if changed == 0 {
+            return Err(StoreError::NotFound {
+                kind: "run",
+                id: id.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
     pub fn record_run_attempt(
         &self,
         id: &RunId,

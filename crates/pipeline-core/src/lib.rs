@@ -1,3 +1,4 @@
+pub mod acquisition;
 pub mod identity;
 pub mod input;
 pub mod persistence;
@@ -7,6 +8,10 @@ pub mod state;
 pub mod storage;
 pub mod tool;
 
+pub use acquisition::{
+    AcquisitionDisposition, AcquisitionError, AcquisitionResult, AcquisitionStage,
+    SraAcquisitionExecutor,
+};
 pub use identity::{ArtifactId, IdError, JobId, RunId};
 pub use input::{
     parse_batch_file, Accession, AccessionKind, AccessionLevel, BatchInput, DirectUrl, InputError,
