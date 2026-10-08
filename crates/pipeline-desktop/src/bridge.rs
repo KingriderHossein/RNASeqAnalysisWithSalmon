@@ -35,6 +35,15 @@ fn error(error: impl std::fmt::Display) -> String {
 }
 
 impl DesktopBridge {
+    pub fn preview_batch(path: &Path) -> Result<Value, String> {
+        let batch = pipeline_core::run_batch::read_run_batch(path)?;
+        Ok(json!({
+            "runs": batch.accessions.iter().map(Accession::as_str).collect::<Vec<_>>(),
+            "duplicate_count": batch.duplicate_count,
+            "metadata_columns": batch.metadata_columns,
+        }))
+    }
+
     fn lock(&self) -> Result<MutexGuard<'_, SessionState>, String> {
         self.state.lock().map_err(|_| {
             "desktop session is unavailable; restart and inspect the persisted job".into()

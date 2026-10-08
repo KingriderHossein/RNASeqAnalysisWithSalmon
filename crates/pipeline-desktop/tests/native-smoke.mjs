@@ -10,6 +10,8 @@ import { setTimeout as delay } from "node:timers/promises";
 const fixture = await mkdtemp(join(tmpdir(), "module-a-native-synthetic-"));
 const tools = join(fixture, "tools");
 const workspace = join(fixture, "workspace");
+const batchFile = join(fixture, "runs with spaces.csv");
+await writeFile(batchFile, "run,notes\nsrr900001,DRR999999\nERR900002,tumor\nSRR900001,normal\n");
 await mkdir(tools); await mkdir(workspace);
 const script = `#!/usr/bin/env python3
 import sys, pathlib, time
@@ -62,8 +64,17 @@ try {
   session = opened.sessionId;
   assert.ok(session);
   await until(() => execute("return !!window.__TAURI__ && document.getElementById('host-notice').hidden;"), "native bridge initialization");
+  await execute(`document.getElementById('batch-path').value = arguments[0];
+    document.getElementById('preview-batch').click();`, [batchFile]);
+  await until(() => execute("return document.getElementById('batch-status').textContent.includes('2 unique runs loaded');"), "batch file preview through native IPC");
+  assert.equal(await execute("return document.getElementById('runs').value;"), "SRR900001\nERR900002");
+  assert.match(await execute("return document.getElementById('batch-status').textContent;"), /1 duplicate.*1 metadata/);
+  assert.equal(await execute("return document.getElementById('start').disabled;"), true);
+  await writeFile(batchFile, "run\nSRR1\nSRX2");
+  await execute("document.getElementById('preview-batch').click();");
+  await until(() => execute("return !document.getElementById('error').hidden;"), "invalid batch rejected");
+  assert.equal(await execute("return document.getElementById('runs').value;"), "SRR900001\nERR900002");
   await execute(`document.getElementById('job-id').value = 'native-synthetic';
-    document.getElementById('runs').value = 'SRR900001\\nERR900002';
     document.getElementById('workspace').value = arguments[0];
     document.getElementById('create-form').requestSubmit();`, [workspace]);
   await until(() => execute("return document.getElementById('job-title').textContent === 'native-synthetic';"), "create through native IPC");
@@ -116,6 +127,7 @@ try {
   await rename(join(tools, "prefetch-disabled"), join(tools, "prefetch"));
   console.log("PASS: real Linux Tauri IPC create/batch/start/pause/resume/complete/refresh; synthetic tools only; checksum retained; unknown totals have no percentage; minimum window has no page overflow.");
   console.log("PASS: real CLI ownership produces GUI Busy, Refresh clears the error after release, completed sibling manifest retained, missing toolkit has installation guidance.");
+  console.log("PASS: real Linux batch-file Preview normalizes/deduplicates, ignores metadata, never starts a download, rejects study input and preserves the previous list before Create.");
 } catch (error) {
   console.error(diagnostics);
   if (session) { try { console.error(await execute("return document.body.innerText;")); } catch {} }

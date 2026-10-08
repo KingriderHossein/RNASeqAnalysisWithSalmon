@@ -7,6 +7,7 @@ pub mod input;
 pub mod ownership;
 pub mod persistence;
 pub mod process;
+pub mod run_batch;
 pub mod sra;
 pub mod state;
 pub mod storage;

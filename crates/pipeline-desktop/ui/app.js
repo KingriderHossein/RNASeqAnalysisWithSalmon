@@ -94,6 +94,48 @@ async function storage() {
   // A recommendation warning never changes the core action capabilities.
 }
 
+async function previewBatch() {
+  if (busy || snapshot?.active) throw new Error("Wait for the active operation before importing runs.");
+  const path = $("batch-path").value.trim();
+  if (!path) throw new Error("Choose a TXT, CSV or TSV file first.");
+  const previous = $("runs").value;
+  busy = true;
+  $("create-job").disabled = true;
+  $("open-job").disabled = true;
+  $("preview-batch").disabled = true;
+  $("choose-batch").disabled = true;
+  $("batch-status").hidden = false;
+  $("batch-status").textContent = "Checking the file…";
+  try {
+    const batch = await call("preview_batch_file", { path });
+    if ($("runs").value !== previous || $("batch-path").value.trim() !== path) {
+      throw new Error("Your input changed during preview. Preview the file again to replace the run list.");
+    }
+    $("runs").value = batch.runs.join("\n");
+    $("batch-status").textContent = `${batch.runs.length} unique runs loaded. ${batch.duplicate_count} duplicate entries removed. ${batch.metadata_columns.length} metadata columns ignored. Review the run list, then Create job. No download has started.`;
+    $("runs").focus();
+  } catch (error) {
+    $("batch-status").textContent = "File was not imported. The previous run list is kept.";
+    throw error;
+  } finally {
+    busy = false;
+    $("create-job").disabled = snapshot?.active ?? false;
+    $("open-job").disabled = snapshot?.active ?? false;
+    $("preview-batch").disabled = false;
+    $("choose-batch").disabled = false;
+  }
+}
+
+$("preview-batch").addEventListener("click", () => void action(previewBatch));
+$("choose-batch").addEventListener("click", () => void action(async () => {
+  if (busy || snapshot?.active) throw new Error("Wait for the active operation before importing runs.");
+  const path = await call("choose_batch_file");
+  if (path) { $("batch-path").value = path; await previewBatch(); }
+}));
+$("runs").addEventListener("input", () => {
+  if (!busy) $("batch-status").hidden = true;
+});
+
 $("create-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (busy) return;

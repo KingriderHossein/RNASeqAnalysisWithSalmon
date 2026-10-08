@@ -3,6 +3,7 @@ use pipeline_core::{
         cancel_job, create_job, terminal_job_report, ControlIntent, DriveMode, JobControl,
         JobCoordinator,
     },
+    run_batch::{read_run_batch, RunBatch},
     Accession, JobId, JobState, SraToolkitPlanner, StateStore, SystemCommandRunner, ToolRegistry,
 };
 use std::{ffi::OsString, path::Path};
@@ -10,6 +11,8 @@ use std::{ffi::OsString, path::Path};
 pub const USAGE: &str = "Module A CLI (resolved run accessions only)
 Usage:
   rnaseq-pipeline create DB JOB OUTPUT_PARENT THREADS SRR... [ERR... DRR...]
+  rnaseq-pipeline preview-batch FILE
+  rnaseq-pipeline create-batch DB JOB OUTPUT_PARENT THREADS FILE
   rnaseq-pipeline inspect DB JOB
   rnaseq-pipeline start DB JOB
   rnaseq-pipeline resume DB JOB
@@ -28,6 +31,14 @@ fn utf8(value: &OsString) -> Result<&str, String> {
         .ok_or_else(|| "identifier/command must be valid UTF-8".into())
 }
 
+fn print_batch(batch: &RunBatch) {
+    for accession in &batch.accessions {
+        println!("{accession}");
+    }
+    eprintln!("{} unique runs; {} duplicate entries removed; {} metadata columns ignored. All listed runs will be included; no cohort filter is applied.",
+        batch.accessions.len(), batch.duplicate_count, batch.metadata_columns.len());
+}
+
 pub fn execute(args: &[OsString]) -> Result<i32, String> {
     let Some(command) = args.first() else {
         print!("{USAGE}");
@@ -42,15 +53,24 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
             println!("rnaseq-pipeline {}", env!("CARGO_PKG_VERSION"));
             Ok(0)
         }
-        "create" if args.len() >= 6 => {
+        "preview-batch" if args.len() == 2 => {
+            print_batch(&read_run_batch(Path::new(&args[1]))?);
+            Ok(0)
+        }
+        "create" | "create-batch" if (utf8(command)? == "create" && args.len() >= 6)
+            || (utf8(command)? == "create-batch" && args.len() == 6) => {
             let id = JobId::new(utf8(&args[2])?).map_err(|e| e.to_string())?;
             let threads = utf8(&args[4])?
                 .parse::<u32>()
                 .map_err(|_| "THREADS must be an integer".to_owned())?;
-            let accessions = args[5..]
+            let accessions = if utf8(command)? == "create-batch" {
+                let batch = read_run_batch(Path::new(&args[5]))?;
+                print_batch(&batch);
+                batch.accessions
+            } else { args[5..]
                 .iter()
                 .map(|value| Accession::parse(utf8(value)?).map_err(|e| e.to_string()))
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Vec<_>, _>>()? };
             let mut store = StateStore::open(Path::new(&args[1])).map_err(|e| e.to_string())?;
             let job = create_job(&mut store, id, Path::new(&args[3]), threads, &accessions)
                 .map_err(|e| e.to_string())?;

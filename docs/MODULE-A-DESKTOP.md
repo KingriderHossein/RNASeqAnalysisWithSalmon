@@ -1,4 +1,4 @@
-# Module A desktop — v0.1.4
+# Module A desktop — v0.1.5
 
 The Tauri 2 desktop is a thin HTML/CSS/JavaScript view over `pipeline-core`.
 It uses the same SQLite job file and stage coordinator as `rnaseq-pipeline`.
@@ -23,6 +23,9 @@ versions. A queued job can be inspected or cancelled without installed tools.
 
 1. Choose an existing writable workspace, enter a job name, distinct resolved
    SRR/ERR/DRR runs and 1–256 conversion threads. Multiple runs form one batch.
+   You can also expand Import runs from a file, Browse or enter a TXT/CSV/TSV
+   path, and Preview. Review the loaded list before Create. Invalid files retain
+   the previous list; preview does not start tools or create a job.
 2. Optionally enter peak workspace guidance. Free space is inspected; download
    and persistent-output estimates remain unknown. A recommendation shortfall
    warns but permits creation/start. Invalid/unwritable destinations report errors.
@@ -60,6 +63,8 @@ still parent #14 requirements. Zero automatic retries is the current policy.
 The current form accepts resolved run accessions. Study/project resolution,
 direct URLs, automatic size estimates and additional analysis modules are not
 implemented here. Scientific gates and cohort contracts remain unchanged.
+File format, limits, selection rules and client behavior are described in
+[batch-file input](MODULE-A-BATCH-INPUT.md). Import does not apply cohort filters.
 
 ## Security and presentation
 

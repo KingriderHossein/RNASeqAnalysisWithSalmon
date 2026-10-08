@@ -1,4 +1,4 @@
-# Module A coordinator and CLI — v0.1.4
+# Module A coordinator and CLI — v0.1.5
 
 This is an engineering implementation for resolved SRR/ERR/DRR accessions. It
 does not authorize execution of the accepted raw cohort or any downstream
@@ -11,6 +11,8 @@ Build with Rust 1.89 or newer: `cargo build --locked --workspace`.
 ```text
 rnaseq-pipeline --help
 rnaseq-pipeline create state.sqlite example /path/to/output 2 SRR900001 ERR900002
+rnaseq-pipeline preview-batch runs.tsv
+rnaseq-pipeline create-batch state.sqlite example /path/to/output 2 runs.tsv
 rnaseq-pipeline inspect state.sqlite example
 rnaseq-pipeline start state.sqlite example
 rnaseq-pipeline pause /path/to/output/example
@@ -25,7 +27,8 @@ real data. On Windows use a native destination path and quote paths with spaces.
 The database parent must already exist. Create reserves a new job directory;
 an existing directory, even empty, is rejected. Job IDs contain 1–128 ASCII
 letters/digits, hyphens or underscores. Threads are bounded to 1–256. Study,
-experiment, URL and batch-file resolution are not exposed by this CLI yet.
+experiment and URL resolution are not exposed by this CLI yet. Resolved-run
+batch files are supported; review the preview before creating a job.
 An existing database must already have the supported Module A schema; an
 uninitialized or unrelated database is rejected before configuration/migration.
 Inspect/Start/Resume/Retry do not create a missing database.

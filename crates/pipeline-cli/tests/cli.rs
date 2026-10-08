@@ -9,6 +9,45 @@ fn binary() -> Command {
 }
 
 #[test]
+fn batch_preview_and_create_preserve_selection_and_reject_before_writes() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("cli-batch-{}-{nonce}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    let file = root.join("batch with spaces.csv");
+    fs::write(&file, "run,notes\nSRR900002,ERR999999\nerr900001,tumor\nSRR900002,normal\n").unwrap();
+    let preview = binary().arg("preview-batch").arg(&file).output().unwrap();
+    assert!(preview.status.success());
+    assert_eq!(String::from_utf8(preview.stdout).unwrap(), "SRR900002\nERR900001\n");
+    assert!(String::from_utf8(preview.stderr).unwrap().contains("1 duplicate"));
+    let db = root.join("state.sqlite");
+    let output = root.join("outputs");
+    let created = binary().arg("create-batch").arg(&db).arg("batch").arg(&output)
+        .arg("2").arg(&file).output().unwrap();
+    assert!(created.status.success(), "{created:?}");
+    let store = pipeline_core::StateStore::open_existing(&db).unwrap();
+    let runs = store.list_job_runs(&pipeline_core::JobId::new("batch").unwrap()).unwrap();
+    assert_eq!(runs.len(), 2);
+    assert!(runs.iter().all(|r| r.state == pipeline_core::RunState::Ready));
+    assert!(!runs.iter().any(|r| r.accession_or_source == "ERR999999"));
+    drop(store);
+
+    for content in [b"run\nSRR1\nSRX2".as_slice(), &[0xff], b"\"SRR1"] {
+        fs::write(&file, content).unwrap();
+        let invalid_db = root.join("untouched.sqlite");
+        let invalid_output = root.join("untouched-output");
+        assert!(!binary().arg("create-batch").arg(&invalid_db).arg("invalid")
+            .arg(&invalid_output).arg("2").arg(&file).output().unwrap().status.success());
+        assert!(!invalid_db.exists() && !invalid_output.exists());
+    }
+    fs::write(&file, vec![b' '; pipeline_core::run_batch::MAX_BATCH_BYTES + 1]).unwrap();
+    assert!(!binary().arg("preview-batch").arg(&file).output().unwrap().status.success());
+    let unsupported = root.join("runs.json");
+    fs::write(&unsupported, "SRR1").unwrap();
+    assert!(!binary().arg("preview-batch").arg(&unsupported).output().unwrap().status.success());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn help_and_invalid_arguments_do_not_require_sra_toolkit() {
     let help = binary().arg("--help").output().unwrap();
     assert!(help.status.success());
