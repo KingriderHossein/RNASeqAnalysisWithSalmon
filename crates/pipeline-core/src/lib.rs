@@ -1,5 +1,6 @@
 pub mod acquisition;
 pub mod conversion;
+pub mod finalization;
 pub mod identity;
 pub mod input;
 pub mod persistence;
@@ -16,6 +17,10 @@ pub use acquisition::{
 pub use conversion::{
     ConversionDisposition, ConversionError, ConversionRequest, ConversionResult,
     FasterqConversionExecutor,
+};
+pub use finalization::{
+    FastqFinalizationExecutor, FinalizationDisposition, FinalizationError, FinalizationResult,
+    FinalizationStage,
 };
 pub use identity::{ArtifactId, IdError, JobId, RunId};
 pub use input::{
