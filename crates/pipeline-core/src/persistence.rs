@@ -258,13 +258,23 @@ impl StateStore {
         runs: &[NewRun],
     ) -> Result<JobRecord, StoreError> {
         let now = unix_timestamp();
-        let transaction = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute(
             "INSERT INTO jobs (job_id, schema_version, input_type, input_identity,
              output_root, overall_state, settings_snapshot, tool_versions_snapshot,
              created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'QUEUED', ?6, ?7, ?8, ?8)",
-            params![job.id.as_str(), SCHEMA_VERSION, job.input_type, job.input_identity,
-                job.output_root, job.settings_snapshot, job.tool_versions_snapshot, now],
+            params![
+                job.id.as_str(),
+                SCHEMA_VERSION,
+                job.input_type,
+                job.input_identity,
+                job.output_root,
+                job.settings_snapshot,
+                job.tool_versions_snapshot,
+                now
+            ],
         )?;
         for run in runs {
             transaction.execute(
@@ -274,19 +284,28 @@ impl StateStore {
             )?;
         }
         transaction.commit()?;
-        self.get_job(&job.id)?.ok_or_else(|| StoreError::NotFound { kind: "job", id: job.id.to_string() })
+        self.get_job(&job.id)?.ok_or_else(|| StoreError::NotFound {
+            kind: "job",
+            id: job.id.to_string(),
+        })
     }
 
     pub fn list_job_runs(&self, id: &JobId) -> Result<Vec<RunRecord>, StoreError> {
         let mut statement = self.connection.prepare(
             "SELECT run_id FROM runs WHERE job_id = ?1 ORDER BY accession_or_source, run_id",
         )?;
-        let ids = statement.query_map(params![id.as_str()], |row| row.get::<_, String>(0))?
+        let ids = statement
+            .query_map(params![id.as_str()], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
-        ids.into_iter().map(|id| {
-            let id = RunId::new(id)?;
-            self.get_run(&id)?.ok_or_else(|| StoreError::NotFound { kind: "run", id: id.to_string() })
-        }).collect()
+        ids.into_iter()
+            .map(|id| {
+                let id = RunId::new(id)?;
+                self.get_run(&id)?.ok_or_else(|| StoreError::NotFound {
+                    kind: "run",
+                    id: id.to_string(),
+                })
+            })
+            .collect()
     }
 
     pub(crate) fn freeze_job_tools(&self, id: &JobId, snapshot: &str) -> Result<(), StoreError> {
@@ -301,6 +320,25 @@ impl StateStore {
         let (lock, path) =
             ExclusivePathLock::database(path.as_ref()).map_err(StoreError::Ownership)?;
         let mut connection = Connection::open(path)?;
+        configure_connection(&connection)?;
+        migrate(&mut connection)?;
+        Ok(Self {
+            connection,
+            _database_lock: Some(lock),
+        })
+    }
+
+    /// Inspect/recovery must not manufacture an empty database on a typo.
+    pub fn open_existing(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        let path = path.as_ref();
+        if !path.is_file() {
+            return Err(StoreError::NotFound {
+                kind: "database",
+                id: path.display().to_string(),
+            });
+        }
+        let (lock, path) = ExclusivePathLock::database(path).map_err(StoreError::Ownership)?;
+        let mut connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
         Ok(Self {

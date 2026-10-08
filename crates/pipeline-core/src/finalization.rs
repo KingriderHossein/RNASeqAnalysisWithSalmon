@@ -203,7 +203,8 @@ impl FastqFinalizationExecutor {
         let parent = validate_fastq_inputs(&paths)?;
         // Conversion owns the FASTQ root; finalization must use the same marker.
         let root = parent.parent().unwrap_or(&parent);
-        let _ownership = OutputOwnership::ensure_or_acquire(&[root], ownership).map_err(FinalizationError::Ownership)?;
+        let _ownership = OutputOwnership::ensure_or_acquire(&[root], ownership)
+            .map_err(FinalizationError::Ownership)?;
 
         match current.state {
             RunState::FastqReady => self.run_compression(store, current, stop, false),

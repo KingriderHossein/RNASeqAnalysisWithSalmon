@@ -173,7 +173,11 @@ pub struct FasterqConversionExecutor<'a, R: CommandRunner> {
 
 impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
     pub fn new(planner: &'a SraToolkitPlanner, runner: &'a R) -> Self {
-        Self { planner, runner, ownership: None }
+        Self {
+            planner,
+            runner,
+            ownership: None,
+        }
     }
 
     pub(crate) fn with_ownership(mut self, ownership: &'a OutputOwnership) -> Self {
@@ -220,7 +224,8 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
         if let Some(parent) = Path::new(sra_path).parent() {
             roots.push(parent);
         }
-        let _ownership = OutputOwnership::ensure_or_acquire(&roots, self.ownership).map_err(ConversionError::Ownership)?;
+        let _ownership = OutputOwnership::ensure_or_acquire(&roots, self.ownership)
+            .map_err(ConversionError::Ownership)?;
         let final_directory = fastq_root.join(accession.as_str());
 
         if fs::symlink_metadata(&final_directory).is_ok() {

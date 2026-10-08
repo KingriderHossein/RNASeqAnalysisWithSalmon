@@ -168,7 +168,10 @@ impl OutputOwnership {
             if !existing.roots.contains(&canonical) {
                 return Err(OwnershipError::Io {
                     path: canonical,
-                    source: io::Error::new(io::ErrorKind::PermissionDenied, "root is outside the live ownership lease"),
+                    source: io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "root is outside the live ownership lease",
+                    ),
                 });
             }
         }
