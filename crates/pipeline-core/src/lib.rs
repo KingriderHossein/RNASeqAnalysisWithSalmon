@@ -3,6 +3,8 @@ pub mod input;
 pub mod persistence;
 pub mod state;
 pub mod storage;
+pub mod sra;
+pub mod tool;
 
 pub use identity::{ArtifactId, IdError, JobId, RunId};
 pub use input::{
@@ -19,3 +21,8 @@ pub use storage::{
     StorageError, StorageInspection, StorageInspector, StoragePlan, StorageWarning,
     StorageWarningKind,
 };
+
+pub use sra::{
+    CommandSpec, FasterqPlan, PrefetchPlan, SraPlanError, SraToolkitPlanner, ValidationPlan,
+};
+pub use tool::{discover_tool, probe_version, ToolError, ToolInfo, ToolKind, ToolRegistry};
