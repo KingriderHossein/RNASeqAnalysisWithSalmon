@@ -61,6 +61,8 @@ Rules:
 
 Purpose: reliably obtain raw sequencing data without requiring the user to edit code.
 
+Detailed Module A contract: [DOWNLOAD-MANAGER-ARCHITECTURE.md](DOWNLOAD-MANAGER-ARCHITECTURE.md).
+
 Inputs may include:
 - one accession;
 - a batch accession file;
@@ -107,7 +109,7 @@ Automate validation gates, publication comparison, provenance closure, and final
 
 The Download Manager is a long-running stateful workflow. Network loss, application restart, tool failure, low disk space, or a failed individual run must not silently destroy progress.
 
-### Required job states
+### Required workflow states
 
 At minimum:
 
@@ -120,16 +122,18 @@ PAUSED
 WAITING_FOR_NETWORK
 DOWNLOADED
 VALIDATING
+SRA_VALID
 CONVERTING
+PAUSED_AT_BOUNDARY
+FASTQ_READY
 COMPRESSING
 CHECKSUMMING
 COMPLETE
-WARNING
 FAILED
 CANCELLED
 ```
 
-The persisted state, not the visible progress bar, is authoritative.
+Warnings are orthogonal metadata/severity and do not replace workflow state. The persisted state, not the visible progress bar, is authoritative.
 
 ### Resume behavior
 
