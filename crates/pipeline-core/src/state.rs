@@ -250,11 +250,7 @@ pub struct RetryTransitionError {
 
 impl fmt::Display for RetryTransitionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "invalid retry transition: {} -> {}",
-            self.from, self.to
-        )
+        write!(f, "invalid retry transition: {} -> {}", self.from, self.to)
     }
 }
 
