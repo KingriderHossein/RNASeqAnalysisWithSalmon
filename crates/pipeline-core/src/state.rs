@@ -203,6 +203,6 @@ mod tests {
             WarningSeverity::Warning,
         );
         assert_eq!(warning.severity, WarningSeverity::Warning);
-        assert_eq!(RunState::Ready, RunState::Ready);
+        assert_eq!(warning.code, "LOW_RECOMMENDED_SPACE");
     }
 }
