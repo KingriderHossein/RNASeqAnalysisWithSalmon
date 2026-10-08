@@ -70,7 +70,7 @@ try {
   assert.equal(await execute("return document.querySelectorAll('#run-rows tr').length;"), 2);
   console.log("VISUAL_QUEUED:" + await request("GET", `/session/${session}/screenshot`));
   await execute("document.getElementById('start').click();");
-  await until(() => execute("return !document.getElementById('pause').disabled;"), "active worker");
+  await until(() => execute("return !document.getElementById('pause').disabled && document.getElementById('run-rows').textContent.includes('Acquiring reads');"), "acquisition stage started");
   await execute("document.getElementById('pause').click();");
   await until(() => execute("return document.getElementById('job-state').textContent === 'Paused';"), "safe pause");
   assert.ok((await execute("return document.getElementById('run-rows').textContent;")).includes("SRA validated"));
@@ -87,6 +87,9 @@ try {
   assert.ok(!(await execute("return document.getElementById('run-rows').textContent;")).includes("%"));
   assert.equal(await execute("return document.getElementById('error').hidden;"), true);
   console.log("VISUAL_COMPLETE:" + await request("GET", `/session/${session}/screenshot`));
+  await request("POST", `/session/${session}/window/rect`, { width: 900, height: 650 });
+  assert.ok(await execute("return document.documentElement.scrollWidth <= window.innerWidth;"));
+  console.log("VISUAL_MINIMUM:" + await request("GET", `/session/${session}/screenshot`));
 
   // The GUI must surface core contention while another real CLI owns SQLite.
   await execute(`document.getElementById('job-id').value = 'native-contention';
@@ -111,7 +114,7 @@ try {
   await execute("document.getElementById('check-tools').click();");
   await until(() => execute("return document.getElementById('tool-details').textContent.includes('Install SRA Toolkit');"), "missing toolkit guidance");
   await rename(join(tools, "prefetch-disabled"), join(tools, "prefetch"));
-  console.log("PASS: real Linux Tauri IPC create/batch/start/pause/resume/complete/refresh; synthetic tools only; checksum retained; unknown totals have no percentage.");
+  console.log("PASS: real Linux Tauri IPC create/batch/start/pause/resume/complete/refresh; synthetic tools only; checksum retained; unknown totals have no percentage; minimum window has no page overflow.");
   console.log("PASS: real CLI ownership produces GUI Busy, Refresh clears the error after release, completed sibling manifest retained, missing toolkit has installation guidance.");
 } catch (error) {
   console.error(diagnostics);

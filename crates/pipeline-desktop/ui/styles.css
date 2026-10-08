@@ -62,6 +62,7 @@ td:first-child { font-family: ui-monospace, monospace; font-weight: 600; overflo
 footer { display: flex; justify-content: space-between; gap: 20px; padding: 16px 30px; border-top: 1px solid var(--border); font-size: 11px; }
 .notice, .error-banner { margin: 18px 30px 0; padding: 12px 16px; border: 1px solid #d9b2b4; border-radius: 6px; color: #822b32; background: #fff0f0; overflow-wrap: anywhere; }
 .notice { background: var(--warn-bg); color: var(--warn); border-color: #eddab1; }
+.error-banner { white-space: pre-line; }
 dialog { border: 1px solid var(--border); border-radius: 8px; padding: 25px; width: min(760px, 85vw); color: var(--text); }
 dialog::backdrop { background: #162f3155; }
 .dialog-heading { display: flex; gap: 20px; justify-content: space-between; align-items: center; margin-bottom: 16px; }

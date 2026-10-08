@@ -84,6 +84,7 @@ Pause/Resume, SDK-free idle Cancel, terminal skips, artifact retention, bounded
 logs, warn-only space guidance and unknown-child preservation. Frontend integer/
 revision/unknown-size tests use `node --test crates/pipeline-desktop/ui/tests/presentation.test.mjs`.
 
+The workspace Cargo.lock records the resolved dependencies; CI uses `--locked`.
 CI separately builds and runs native Clippy for Linux, Windows and macOS. Linux
 also runs a real Tauri/WebKitGTK window under Xvfb through `tauri-driver` 2.1.0:
 
@@ -96,6 +97,9 @@ xvfb-run node crates/pipeline-desktop/tests/native-smoke.mjs
 That smoke uses only small synthetic executable-tool fixtures on a temporary
 PATH. It exercises real frontend→IPC→coordinator batch creation/start/Pause/
 Resume/finalization/Refresh and verifies the checksum manifest is preserved.
+It checks native minimum-window overflow, GUI Busy under a real CLI owner,
+Refresh after release, and missing-tool installation guidance. Screenshots are
+available in the native CI job log for visual review.
 It never contacts an archive or downloads cohort data. Native file-picker
 interaction, Windows/macOS GUI interaction, packaging/signing, abrupt process-tree
 reconciliation and production network recovery still need release-gate evidence.

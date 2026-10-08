@@ -43,22 +43,16 @@ jobs:
 
       - name: Clippy
         if: ${{ !cancelled() }}
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Test
         if: ${{ !cancelled() }}
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: Frontend presentation tests
         if: ${{ !cancelled() }}
         run: node --test crates/pipeline-desktop/ui/tests/presentation.test.mjs
 
-      - name: Resolved dependency checkpoint
-        if: runner.os == 'Linux' && !cancelled()
-        run: |
-          echo LOCKFILE_START
-          cat Cargo.lock
-          echo LOCKFILE_END
 
   desktop:
     strategy:
@@ -79,10 +73,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev webkit2gtk-driver xvfb
       - name: Native Clippy
-        run: cargo clippy -p pipeline-desktop --features native --all-targets -- -D warnings
+        run: cargo clippy --locked -p pipeline-desktop --features native --all-targets -- -D warnings
       - name: Native build
         if: ${{ !cancelled() }}
-        run: cargo build -p pipeline-desktop -p pipeline-cli --features native
+        run: cargo build --locked -p pipeline-desktop -p pipeline-cli --features native
       - name: Native Linux WebDriver
         if: runner.os == 'Linux' && success()
         run: |
