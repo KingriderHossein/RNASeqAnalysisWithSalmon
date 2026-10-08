@@ -1,5 +1,6 @@
 pub mod acquisition;
 pub mod conversion;
+pub mod coordinator;
 pub mod finalization;
 pub mod identity;
 pub mod input;

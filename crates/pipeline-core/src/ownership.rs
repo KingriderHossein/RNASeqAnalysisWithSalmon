@@ -123,6 +123,7 @@ impl ExclusivePathLock {
 #[derive(Debug)]
 pub struct OutputOwnership {
     _locks: Vec<ExclusivePathLock>,
+    roots: Vec<PathBuf>,
 }
 
 impl OutputOwnership {
@@ -139,12 +140,39 @@ impl OutputOwnership {
         paths.sort();
         paths.dedup();
         let mut locks = Vec::with_capacity(paths.len());
-        for path in paths {
+        for path in &paths {
             locks.push(ExclusivePathLock::acquire(
                 &path.join(".pipeline-owner.lock"),
             )?);
         }
-        Ok(Self { _locks: locks })
+        Ok(Self {
+            _locks: locks,
+            roots: paths,
+        })
+    }
+
+    /// A coordinator may lend its live lease to a stage. Every requested root
+    /// must be exactly one of the canonical roots held by that lease.
+    pub(crate) fn ensure_or_acquire(
+        roots: &[&Path],
+        existing: Option<&Self>,
+    ) -> Result<Option<Self>, OwnershipError> {
+        let Some(existing) = existing else {
+            return Self::acquire(roots).map(Some);
+        };
+        for root in roots {
+            let canonical = fs::canonicalize(root).map_err(|source| OwnershipError::Io {
+                path: root.to_path_buf(),
+                source,
+            })?;
+            if !existing.roots.contains(&canonical) {
+                return Err(OwnershipError::Io {
+                    path: canonical,
+                    source: io::Error::new(io::ErrorKind::PermissionDenied, "root is outside the live ownership lease"),
+                });
+            }
+        }
+        Ok(None)
     }
 }
 

@@ -37,8 +37,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
+        if: ${{ !cancelled() }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
+        if: ${{ !cancelled() }}
         run: cargo test --workspace
-

@@ -1,24 +1,11 @@
-use pipeline_core::RunState;
-
-fn print_help() {
-    println!("RNA-seq Pipeline Manager");
-    println!();
-    println!("Usage:");
-    println!("  rnaseq-pipeline states");
-    println!("  rnaseq-pipeline --help");
-}
+mod commands;
 
 fn main() {
-    match std::env::args().nth(1).as_deref() {
-        Some("states") => {
-            for state in RunState::ALL {
-                println!("{state}");
-            }
-        }
-        Some("-h") | Some("--help") | None => print_help(),
-        Some(other) => {
-            eprintln!("unknown command: {other}");
-            print_help();
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    match commands::execute(&args) {
+        Ok(code) => std::process::exit(code),
+        Err(error) => {
+            eprintln!("{error}");
             std::process::exit(2);
         }
     }

@@ -51,3 +51,18 @@ A decision update + PR is required for changes to:
 - project completion criteria.
 
 Architecture v2.0 is the execution baseline. Routine implementation may refine mechanics but must not silently redefine these contracts.
+
+## Module A control boundary — v0.1.3
+
+The shared coordinator owns the complete resolved-run batch and lends live,
+canonical output leases to existing stage executors. The CLI contains command
+parsing and presentation only. Pause/Cancel requests persist outside SQLite so
+they work while the database owner is active. Control is applied between stages;
+external tools are not asynchronously killed by the coordinator because the
+current runner does not prove descendant termination. Crash checkpoints for
+external tools remain blocked until supported process-lifetime reconciliation
+is implemented. Unclassified tool failures require explicit Retry; automatic
+network retry is disabled rather than inferred from every nonzero exit.
+This refines implementation mechanics without changing the scientific gates or
+the parent's full resumability/network-recovery requirements. Details and current
+limits: [Module A CLI](MODULE-A-CLI.md).

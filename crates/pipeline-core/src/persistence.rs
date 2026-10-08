@@ -250,6 +250,53 @@ pub struct StateStore {
 }
 
 impl StateStore {
+    /// Commit the entire resolved batch or none of it. Ready runs cannot be
+    /// observed with only part of the destination plan registered.
+    pub(crate) fn create_resolved_job(
+        &mut self,
+        job: NewJob,
+        runs: &[NewRun],
+    ) -> Result<JobRecord, StoreError> {
+        let now = unix_timestamp();
+        let transaction = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "INSERT INTO jobs (job_id, schema_version, input_type, input_identity,
+             output_root, overall_state, settings_snapshot, tool_versions_snapshot,
+             created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'QUEUED', ?6, ?7, ?8, ?8)",
+            params![job.id.as_str(), SCHEMA_VERSION, job.input_type, job.input_identity,
+                job.output_root, job.settings_snapshot, job.tool_versions_snapshot, now],
+        )?;
+        for run in runs {
+            transaction.execute(
+                "INSERT INTO runs (run_id, job_id, accession_or_source, state,
+                 last_checkpoint, created_at, updated_at) VALUES (?1, ?2, ?3, 'READY', 'resolved', ?4, ?4)",
+                params![run.id.as_str(), run.job_id.as_str(), run.accession_or_source, now],
+            )?;
+        }
+        transaction.commit()?;
+        self.get_job(&job.id)?.ok_or_else(|| StoreError::NotFound { kind: "job", id: job.id.to_string() })
+    }
+
+    pub fn list_job_runs(&self, id: &JobId) -> Result<Vec<RunRecord>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT run_id FROM runs WHERE job_id = ?1 ORDER BY accession_or_source, run_id",
+        )?;
+        let ids = statement.query_map(params![id.as_str()], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        ids.into_iter().map(|id| {
+            let id = RunId::new(id)?;
+            self.get_run(&id)?.ok_or_else(|| StoreError::NotFound { kind: "run", id: id.to_string() })
+        }).collect()
+    }
+
+    pub(crate) fn freeze_job_tools(&self, id: &JobId, snapshot: &str) -> Result<(), StoreError> {
+        self.connection.execute(
+            "UPDATE jobs SET tool_versions_snapshot = ?2, updated_at = ?3 WHERE job_id = ?1 AND tool_versions_snapshot = '{}'",
+            params![id.as_str(), snapshot, unix_timestamp()],
+        )?;
+        Ok(())
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let (lock, path) =
             ExclusivePathLock::database(path.as_ref()).map_err(StoreError::Ownership)?;
