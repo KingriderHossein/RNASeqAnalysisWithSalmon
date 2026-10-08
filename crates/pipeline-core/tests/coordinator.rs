@@ -369,7 +369,9 @@ fn pause_keeps_completed_sibling_and_its_bytes_unchanged() {
     assert_eq!(paused.state, JobState::Paused);
     assert_eq!(paused.runs[0].state, RunState::Complete);
     assert_eq!(paused.runs[1].state, RunState::Ready);
-    let path = f.job_root.join("fastq/SRR900001/compressed/SRR900001.fastq.gz");
+    let path = f
+        .job_root
+        .join("fastq/SRR900001/compressed/SRR900001.fastq.gz");
     let bytes = fs::read(&path).unwrap();
     drop(store);
     let mut store = StateStore::open_existing(&f.db).unwrap();
@@ -524,6 +526,28 @@ fn restart_dispatches_finalization_checkpoints_without_external_tools() {
             .is_file());
         drop(store);
     }
+}
+
+#[test]
+#[cfg(unix)]
+fn resume_preserves_a_preexisting_control_symlink() {
+    let (f, mut store) = fixture(&["SRR900001"]);
+    let target = f.root.join("user-file");
+    fs::write(&target, b"keep original").unwrap();
+    let link = f.job_root.join("control/pause.request");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let before = store.list_job_runs(&f.id).unwrap();
+    let planner = planner();
+    let runner = FakeRunner::default();
+    let error = JobCoordinator::new(&planner, &runner)
+        .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+        .unwrap_err();
+    assert!(error.to_string().contains("regular file"));
+    assert_eq!(fs::read_link(link).unwrap(), target);
+    assert_eq!(fs::read(target).unwrap(), b"keep original");
+    assert_eq!(store.list_job_runs(&f.id).unwrap(), before);
+    assert!(runner.seen.lock().unwrap().is_empty());
+    drop(store);
 }
 
 #[test]

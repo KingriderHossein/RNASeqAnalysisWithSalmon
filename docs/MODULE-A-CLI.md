@@ -28,7 +28,9 @@ letters/digits, hyphens or underscores. Threads are bounded to 1–256. Study,
 experiment, URL and batch-file resolution are not exposed by this CLI yet.
 
 Create atomically records all READY runs and the versioned settings/destination
-plan. It does not require or execute SRA Toolkit. The first worker freezes tool
+plan. If creation fails after reserving the destination, it retains that
+directory for inspection instead of force-cleaning it. It does not require or
+execute SRA Toolkit. The first worker freezes tool
 paths and version outputs; subsequent workers reject a changed toolchain rather
 than silently changing provenance. Install prefetch, vdb-validate and
 fasterq-dump on PATH before execution. No shell command string is constructed.

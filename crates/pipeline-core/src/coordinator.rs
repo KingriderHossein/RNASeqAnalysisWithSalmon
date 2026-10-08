@@ -128,7 +128,18 @@ impl JobControl {
 
     fn resume(&self) -> Result<(), JobError> {
         let _lease = OutputOwnership::acquire(&[&self.directory])?;
-        match fs::remove_file(self.directory.join("pause.request")) {
+        let path = self.directory.join("pause.request");
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_file() => {}
+            Ok(_) => {
+                return Err(JobError::Invalid(
+                    "control request must be a regular file".into(),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        }
+        match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
