@@ -46,8 +46,23 @@ Never commit:
 - never infer biology from filename/order/clustering alone;
 - do not hide scientific decisions in scripts or chat.
 
-## Architecture-phase boundary
+## Current execution boundary
 
-Architecture finalization permits documentation, project structure and work-item design only.
+Architecture v2.0 and the Module A Download Manager architecture are frozen enough for **Module A implementation**.
 
-Do not perform raw download, index construction, Salmon quantification, tximport, DESeq2 or other substantive pipeline execution during architecture finalization.
+Permitted now:
+- Rust/Tauri project scaffolding;
+- shared Rust Core, CLI and desktop-shell implementation;
+- state/recovery/storage/tool-adapter code;
+- unit/integration tests using synthetic or bounded fixtures;
+- documentation and packaging work required by Module A.
+
+Still prohibited until their owning gates/work items authorize them:
+- production/raw cohort download execution as accepted project data;
+- reference/index construction;
+- Salmon quantification;
+- tximport;
+- DESeq2;
+- downstream scientific analysis.
+
+Implementation must not silently change the scientific contracts in the canonical docs.
