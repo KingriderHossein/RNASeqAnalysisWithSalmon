@@ -161,11 +161,21 @@ struct AttemptContext<'a> {
 pub struct SraAcquisitionExecutor<'a, R: CommandRunner> {
     planner: &'a SraToolkitPlanner,
     runner: &'a R,
+    ownership: Option<&'a OutputOwnership>,
 }
 
 impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
     pub fn new(planner: &'a SraToolkitPlanner, runner: &'a R) -> Self {
-        Self { planner, runner }
+        Self {
+            planner,
+            runner,
+            ownership: None,
+        }
+    }
+
+    pub(crate) fn with_ownership(mut self, ownership: &'a OutputOwnership) -> Self {
+        self.ownership = Some(ownership);
+        self
     }
 
     pub fn execute_to_sra_valid(
@@ -198,7 +208,8 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         {
             roots.push(parent);
         }
-        let _ownership = OutputOwnership::acquire(&roots).map_err(AcquisitionError::Ownership)?;
+        let _ownership = OutputOwnership::ensure_or_acquire(&roots, self.ownership)
+            .map_err(AcquisitionError::Ownership)?;
 
         let accession = Accession::parse(&current.accession_or_source)?;
 

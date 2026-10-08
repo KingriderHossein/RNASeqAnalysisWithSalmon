@@ -181,6 +181,16 @@ impl FastqFinalizationExecutor {
         run_id: &RunId,
         stop: &StopToken,
     ) -> Result<FinalizationResult, FinalizationError> {
+        self.execute_with_ownership(store, run_id, stop, None)
+    }
+
+    pub(crate) fn execute_with_ownership(
+        &self,
+        store: &mut StateStore,
+        run_id: &RunId,
+        stop: &StopToken,
+        ownership: Option<&OutputOwnership>,
+    ) -> Result<FinalizationResult, FinalizationError> {
         let current = store
             .get_run(run_id)?
             .ok_or_else(|| FinalizationError::MissingRun(run_id.clone()))?;
@@ -193,7 +203,8 @@ impl FastqFinalizationExecutor {
         let parent = validate_fastq_inputs(&paths)?;
         // Conversion owns the FASTQ root; finalization must use the same marker.
         let root = parent.parent().unwrap_or(&parent);
-        let _ownership = OutputOwnership::acquire(&[root]).map_err(FinalizationError::Ownership)?;
+        let _ownership = OutputOwnership::ensure_or_acquire(&[root], ownership)
+            .map_err(FinalizationError::Ownership)?;
 
         match current.state {
             RunState::FastqReady => self.run_compression(store, current, stop, false),

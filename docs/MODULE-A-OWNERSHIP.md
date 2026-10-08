@@ -33,7 +33,9 @@ Synthetic tests cover separate-process SQLite/output contention, process termina
 
 These are cooperating-engine locks on local filesystems. They do not stop an administrator or unrelated program from deliberately replacing parent directories, deleting lock markers, hard-link aliasing a database, or modifying source files during execution. Native no-replace publication protects against unrelated **destination creation**, even if that writer ignores the lock. Network/removable/virtual filesystems require independent validation and may reject locking/rename features; failures stay blocking and preserve evidence. Tests establish process-crash behavior, not hardware power-loss durability of every filesystem.
 
-The CLI is still a scaffold, and Tauri execution controls are not yet wired. This patch does not authorize real GSE89223 downloads or scientific execution.
+The [v0.1.3 shared coordinator and CLI](MODULE-A-CLI.md) reuse these core guards
+and retain leases across stage boundaries. Tauri execution controls remain
+unfinished. No real GSE89223 downloads or scientific execution are authorized.
 
 ## Primary API contracts
 

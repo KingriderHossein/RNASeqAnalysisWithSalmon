@@ -52,6 +52,7 @@ The primary project is therefore a **whole-transcriptome expression reanalysis**
 | [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) | Schemas, identities, provenance |
 | [VALIDATION](docs/VALIDATION.md) | Gates and rejection rules |
 | [GOVERNANCE](docs/GOVERNANCE.md) | GitHub workflow and change control |
+| [Module A CLI](docs/MODULE-A-CLI.md) | Shared coordinator commands and supported recovery boundaries |
 | [Metadata provenance](metadata/README.md) | Sample/cohort provenance |
 | [AGENTS](AGENTS.md) | Mandatory implementation rules |
 
@@ -138,3 +139,8 @@ Nikitina AS et al. *Novel RNA biomarkers of prostate cancer revealed by RNA-seq 
 ## Current state
 
 **Architecture v2.0 is the frozen execution baseline.**
+
+Module A core and CLI v0.1.3 support persisted resolved-run batches with shared
+ownership and safe stage-boundary controls. Desktop wiring, full process-tree
+recovery and automatic network backoff remain unfinished. Validation uses
+synthetic fixtures; accepted-cohort raw execution remains gated.

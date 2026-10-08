@@ -80,6 +80,7 @@ impl RunState {
                     Checksumming,
                     PausedAtBoundary | Complete | Failed | Cancelled
                 )
+                | (Failed, Cancelled)
         )
     }
 

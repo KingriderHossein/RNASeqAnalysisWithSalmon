@@ -289,3 +289,13 @@ Implementation may start when the Rust/Tauri stack, SQLite state backend, state 
 
 OS-level ownership and atomic no-replace publication are mandatory shared-core boundaries. See [MODULE-A-OWNERSHIP.md](MODULE-A-OWNERSHIP.md) for the database/output marker contract, supported platform primitives, contention actions, crash recovery, and limits. CLI and Tauri must reuse these boundaries.
 
+## 17. Shared coordinator and executable CLI — v0.1.3
+
+Resolved single/batch run jobs use the shared coordinator and existing stage
+executors. Settings, destinations and tool snapshots persist in SQLite. A live
+lease spans stage boundaries; Pause/Cancel use durable requests applied at safe
+boundaries. Ambiguous external-process crash states stay blocked, and
+unclassified tool failures require explicit Retry. See
+[MODULE-A-CLI.md](MODULE-A-CLI.md) for commands, supported recovery and current
+limits. Full process-tree recovery, automatic network backoff, study resolution
+and desktop wiring remain parent Module A requirements.

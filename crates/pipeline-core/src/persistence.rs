@@ -250,10 +250,101 @@ pub struct StateStore {
 }
 
 impl StateStore {
+    /// Commit the entire resolved batch or none of it. Ready runs cannot be
+    /// observed with only part of the destination plan registered.
+    pub(crate) fn create_resolved_job(
+        &mut self,
+        job: NewJob,
+        runs: &[NewRun],
+    ) -> Result<JobRecord, StoreError> {
+        let now = unix_timestamp();
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "INSERT INTO jobs (job_id, schema_version, input_type, input_identity,
+             output_root, overall_state, settings_snapshot, tool_versions_snapshot,
+             created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'QUEUED', ?6, ?7, ?8, ?8)",
+            params![
+                job.id.as_str(),
+                SCHEMA_VERSION,
+                job.input_type,
+                job.input_identity,
+                job.output_root,
+                job.settings_snapshot,
+                job.tool_versions_snapshot,
+                now
+            ],
+        )?;
+        for run in runs {
+            transaction.execute(
+                "INSERT INTO runs (run_id, job_id, accession_or_source, state,
+                 last_checkpoint, created_at, updated_at) VALUES (?1, ?2, ?3, 'READY', 'resolved', ?4, ?4)",
+                params![run.id.as_str(), run.job_id.as_str(), run.accession_or_source, now],
+            )?;
+        }
+        transaction.commit()?;
+        self.get_job(&job.id)?.ok_or_else(|| StoreError::NotFound {
+            kind: "job",
+            id: job.id.to_string(),
+        })
+    }
+
+    pub fn list_job_runs(&self, id: &JobId) -> Result<Vec<RunRecord>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT run_id FROM runs WHERE job_id = ?1 ORDER BY accession_or_source, run_id",
+        )?;
+        let ids = statement
+            .query_map(params![id.as_str()], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        ids.into_iter()
+            .map(|id| {
+                let id = RunId::new(id)?;
+                self.get_run(&id)?.ok_or_else(|| StoreError::NotFound {
+                    kind: "run",
+                    id: id.to_string(),
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) fn freeze_job_tools(&self, id: &JobId, snapshot: &str) -> Result<(), StoreError> {
+        self.connection.execute(
+            "UPDATE jobs SET tool_versions_snapshot = ?2, updated_at = ?3 WHERE job_id = ?1 AND tool_versions_snapshot = '{}'",
+            params![id.as_str(), snapshot, unix_timestamp()],
+        )?;
+        Ok(())
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let (lock, path) =
             ExclusivePathLock::database(path.as_ref()).map_err(StoreError::Ownership)?;
+        let existed = path.exists();
         let mut connection = Connection::open(path)?;
+        if existed {
+            validate_existing_schema(&connection)?;
+        }
+        configure_connection(&connection)?;
+        migrate(&mut connection)?;
+        Ok(Self {
+            connection,
+            _database_lock: Some(lock),
+        })
+    }
+
+    /// Inspect/recovery must not manufacture an empty database on a typo.
+    pub fn open_existing(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        let path = path.as_ref();
+        if !path.is_file() {
+            return Err(StoreError::NotFound {
+                kind: "database",
+                id: path.display().to_string(),
+            });
+        }
+        let (lock, path) = ExclusivePathLock::database(path).map_err(StoreError::Ownership)?;
+        let mut connection =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        validate_existing_schema(&connection)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
         Ok(Self {
@@ -868,6 +959,25 @@ impl StateStore {
     }
 }
 
+fn validate_existing_schema(connection: &Connection) -> Result<(), StoreError> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version > SCHEMA_VERSION {
+        return Err(StoreError::UnsupportedSchema(version));
+    }
+    let tables: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('jobs', 'runs', 'artifacts')",
+        [],
+        |row| row.get(0),
+    )?;
+    if version != SCHEMA_VERSION || tables != 3 {
+        return Err(StoreError::InvalidStoredValue {
+            field: "Module A database schema",
+            value: "not a supported Module A database; Create requires a new path".into(),
+        });
+    }
+    Ok(())
+}
+
 fn configure_connection(connection: &Connection) -> Result<(), StoreError> {
     connection.busy_timeout(Duration::from_secs(5))?;
     connection.pragma_update(None, "foreign_keys", "ON")?;
@@ -993,6 +1103,40 @@ mod tests {
             "rnaseq-pipeline-state-{}-{nonce}.sqlite",
             process::id()
         ))
+    }
+
+    #[test]
+    fn opening_foreign_database_does_not_initialize_or_modify_it() {
+        let path = temp_database_path();
+        {
+            let connection = Connection::open(&path).expect("foreign database");
+            connection
+                .execute_batch(
+                    "CREATE TABLE user_data (value TEXT);
+                     INSERT INTO user_data VALUES ('keep');",
+                )
+                .expect("seed foreign database");
+        }
+        let before = fs::read(&path).expect("read");
+        assert!(StateStore::open(&path).is_err());
+        assert!(StateStore::open_existing(&path).is_err());
+        assert_eq!(fs::read(&path).expect("read"), before);
+        fs::remove_file(&path).expect("cleanup");
+        let mut marker = path.as_os_str().to_os_string();
+        marker.push(".pipeline.lock");
+        fs::remove_file(PathBuf::from(marker)).expect("cleanup marker");
+    }
+
+    #[test]
+    fn resolved_batch_rolls_back_job_and_siblings_on_insert_failure() {
+        let mut store = StateStore::open_in_memory().expect("store");
+        let job = sample_job();
+        let run = sample_run(&job.id);
+        assert!(store
+            .create_resolved_job(job.clone(), &[run.clone(), run])
+            .is_err());
+        assert!(store.get_job(&job.id).expect("query").is_none());
+        assert!(store.list_job_runs(&job.id).expect("query").is_empty());
     }
 
     #[test]
