@@ -47,6 +47,15 @@ pub struct ExclusivePathLock {
     _file: File,
 }
 
+impl Drop for ExclusivePathLock {
+    fn drop(&mut self) {
+        // Explicit release avoids a transient inherited descriptor (fork before
+        // exec in another thread) extending ownership beyond this guard's life.
+        // Process termination still releases locks through the OS.
+        let _ = self._file.unlock();
+    }
+}
+
 impl ExclusivePathLock {
     fn acquire(path: &Path) -> Result<Self, OwnershipError> {
         let io_error = |source| OwnershipError::Io {
