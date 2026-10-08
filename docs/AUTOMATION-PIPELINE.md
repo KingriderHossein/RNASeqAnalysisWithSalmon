@@ -32,22 +32,23 @@ A non-programmer should be able to use the graphical interface, while advanced u
 Desktop GUI
 HTML + CSS + JavaScript
         │
-        │ JS ↔ Python bridge
+        │ Tauri 2 command/event bridge
         ▼
-Python Core Engine
+Rust Core Engine
         │
-        ├── CLI
+        ├── Rust CLI
         ├── local filesystem
-        ├── SRA Toolkit
-        ├── FastQC / MultiQC
-        ├── Salmon
-        ├── R / Bioconductor
+        ├── persistent job/state engine
+        ├── SRA Toolkit adapters
+        ├── FastQC / MultiQC adapters
+        ├── Salmon adapter
+        ├── R / Bioconductor adapter
         └── future pipeline modules
 ```
 
 Rules:
 
-- GUI and CLI use the same Python core.
+- GUI and CLI use the same Rust core.
 - Scientific/business logic does not live in the frontend.
 - The GUI must be removable without breaking the core pipeline.
 - Every module persists enough state to resume after interruption.
@@ -274,15 +275,17 @@ Frontend responsibilities:
 - show progress, state, warnings, and errors;
 - request user actions.
 
-Python Core responsibilities:
+Rust Core responsibilities:
 - validate/resolve inputs;
 - inspect filesystem/storage;
-- manage job state;
-- invoke external tools;
+- manage persistent job state;
+- invoke external bioinformatics tools through explicit process adapters;
 - implement retry/resume semantics;
 - validate artifacts;
-- emit structured progress/state events;
+- emit structured progress/state events to Tauri;
 - maintain logs/provenance.
+
+Tauri 2 is the desktop application shell and local frontend/backend bridge. The frontend remains ordinary HTML/CSS/JavaScript and does not own scientific or workflow logic.
 
 The frontend must not infer completion from a percentage alone; it renders state emitted by the core.
 
@@ -308,7 +311,35 @@ Target operating systems:
 - macOS;
 - Windows.
 
-Cross-platform Python APIs should be preferred for filesystem, path, checksum, process, and storage logic. Platform-specific code belongs behind adapters and must not leak into scientific workflow logic.
+Cross-platform Rust APIs/crates should be preferred for filesystem, path, checksum, process, state, and storage logic. Platform-specific code belongs behind adapters and must not leak into scientific workflow logic.
+
+
+## 9.1 Technology stack
+
+The accepted implementation stack is:
+
+```text
+Desktop shell: Tauri 2
+Frontend:      HTML + CSS + JavaScript
+Core engine:   Rust
+CLI:           Rust
+State store:   Rust-owned persistent store (exact backend frozen during Module A design)
+External tools:
+  - SRA Toolkit
+  - FastQC / MultiQC
+  - Salmon
+  - R / Bioconductor
+```
+
+Rationale:
+
+- the project is a long-running local desktop workflow with resume/retry/recovery requirements;
+- Rust provides a strong fit for process orchestration, concurrency, filesystem work, checksums, persistent state, and cross-platform binaries;
+- Tauri 2 provides the desktop shell and JavaScript↔Rust bridge while preserving the HTML/CSS/JavaScript frontend;
+- external scientific tools remain separate versioned executables rather than being reimplemented merely to unify languages;
+- R remains responsible for tximport/DESeq2 where the canonical statistical implementation belongs to Bioconductor.
+
+Salmon being implemented in Rust is **not** itself the reason for this choice. Salmon remains an external, explicitly versioned tool invoked by the orchestration layer unless a future reviewed architecture decision proves a library-level integration materially better.
 
 ## 10. GitHub delivery model
 
