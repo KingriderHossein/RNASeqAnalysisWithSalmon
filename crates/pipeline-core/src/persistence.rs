@@ -10,6 +10,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use crate::ownership::ExclusivePathLock;
+use crate::OwnershipError;
+
 const SCHEMA_VERSION: i64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,6 +162,7 @@ pub struct ArtifactRecord {
 #[derive(Debug)]
 pub enum StoreError {
     Database(rusqlite::Error),
+    Ownership(OwnershipError),
     InvalidId(IdError),
     InvalidState(StateParseError),
     InvalidTransition(TransitionError),
@@ -172,6 +176,7 @@ pub enum StoreError {
 impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Ownership(error) => error.fmt(f),
             Self::Database(error) => write!(f, "database error: {error}"),
             Self::InvalidId(error) => error.fmt(f),
             Self::InvalidState(error) => error.fmt(f),
@@ -196,6 +201,7 @@ impl std::error::Error for StoreError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Database(error) => Some(error),
+            Self::Ownership(error) => Some(error),
             Self::InvalidId(error) => Some(error),
             Self::InvalidState(error) => Some(error),
             Self::InvalidTransition(error) => Some(error),
@@ -240,21 +246,30 @@ impl From<RetryTransitionError> for StoreError {
 
 pub struct StateStore {
     connection: Connection,
+    _database_lock: Option<ExclusivePathLock>,
 }
 
 impl StateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        let (lock, path) = ExclusivePathLock::database(path.as_ref())
+            .map_err(StoreError::Ownership)?;
         let mut connection = Connection::open(path)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            _database_lock: Some(lock),
+        })
     }
 
     pub fn open_in_memory() -> Result<Self, StoreError> {
         let mut connection = Connection::open_in_memory()?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            _database_lock: None,
+        })
     }
 
     pub fn create_job(&self, job: NewJob) -> Result<JobRecord, StoreError> {
@@ -1132,3 +1147,4 @@ mod tests {
             .is_empty());
     }
 }
+

@@ -3,6 +3,7 @@ pub mod conversion;
 pub mod finalization;
 pub mod identity;
 pub mod input;
+pub mod ownership;
 pub mod persistence;
 pub mod process;
 pub mod sra;
@@ -45,3 +46,6 @@ pub use process::{
 };
 pub use sra::{FasterqPlan, PrefetchPlan, SraPlanError, SraToolkitPlanner, ValidationPlan};
 pub use tool::{discover_tool, probe_version, ToolError, ToolInfo, ToolKind, ToolRegistry};
+
+
+pub use ownership::{OutputOwnership, OwnershipError};

@@ -1,3 +1,4 @@
+use crate::ownership::{publish_noreplace, OutputOwnership, OwnershipError};
 use crate::{
     Accession, ArtifactId, CommandOutcome, CommandRunner, IdError, ProcessContext, ProcessError,
     RunId, RunRecord, RunState, SraPlanError, SraToolkitPlanner, StateStore, StopToken, StoreError,
@@ -53,6 +54,7 @@ impl ConversionRequest {
 #[derive(Debug)]
 pub enum ConversionError {
     Store(StoreError),
+    Ownership(OwnershipError),
     Plan(SraPlanError),
     Identity(IdError),
     Process(ProcessError),
@@ -79,6 +81,7 @@ impl fmt::Display for ConversionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Store(error) => error.fmt(f),
+            Self::Ownership(error) => error.fmt(f),
             Self::Plan(error) => error.fmt(f),
             Self::Identity(error) => error.fmt(f),
             Self::Process(error) => write!(f, "fasterq-dump process execution failed: {error}"),
@@ -126,6 +129,7 @@ impl std::error::Error for ConversionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Store(error) => Some(error),
+            Self::Ownership(error) => Some(error),
             Self::Plan(error) => Some(error),
             Self::Identity(error) => Some(error),
             Self::Process(error) => Some(error),
@@ -206,9 +210,15 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
         let fastq_root = request.fastq_root.as_path();
         let temp_root = request.temp_root.as_path();
         let log_root = request.log_root.as_path();
+        let mut roots = vec![fastq_root, temp_root, log_root];
+        if let Some(parent) = Path::new(sra_path).parent() {
+            roots.push(parent);
+        }
+        let _ownership = OutputOwnership::acquire(&roots)
+            .map_err(ConversionError::Ownership)?;
         let final_directory = fastq_root.join(accession.as_str());
 
-        if final_directory.exists() {
+        if fs::symlink_metadata(&final_directory).is_ok() {
             return Err(ConversionError::FinalOutputExists(final_directory));
         }
 
@@ -391,7 +401,7 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
             return Err(error);
         }
 
-        if let Err(source) = fs::rename(&staging_directory, &final_directory) {
+        if let Err(source) = publish_noreplace(&staging_directory, &final_directory) {
             let error = ConversionError::Io {
                 operation: "finalize FASTQ directory",
                 path: final_directory.clone(),
@@ -1114,3 +1124,4 @@ mod tests {
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
+

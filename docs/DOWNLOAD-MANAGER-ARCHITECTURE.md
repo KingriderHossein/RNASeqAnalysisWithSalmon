@@ -284,3 +284,8 @@ Filesystem evidence and persisted state are reconciled; neither is trusted blind
 ## 15. Architecture freeze boundary
 
 Implementation may start when the Rust/Tauri stack, SQLite state backend, state transitions, recovery semantics, prefetch-resume vs fasterq-restart distinction, shared GUI/CLI core, non-blocking storage warning, and artifact integrity/finalization behavior are accepted and no unresolved architecture question blocks a safe pilot.
+
+## 16. Core ownership and publication — v0.1.2
+
+OS-level ownership and atomic no-replace publication are mandatory shared-core boundaries. See [MODULE-A-OWNERSHIP.md](MODULE-A-OWNERSHIP.md) for the database/output marker contract, supported platform primitives, contention actions, crash recovery, and limits. CLI and Tauri must reuse these boundaries.
+

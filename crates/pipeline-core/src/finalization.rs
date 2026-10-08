@@ -1,3 +1,4 @@
+use crate::ownership::{publish_noreplace, OutputOwnership, OwnershipError};
 use crate::{
     ArtifactId, ArtifactKind, ArtifactRecord, RunId, RunRecord, RunState, StateStore, StopToken,
     StoreError,
@@ -46,6 +47,7 @@ pub struct FinalizationResult {
 #[derive(Debug)]
 pub enum FinalizationError {
     Store(StoreError),
+    Ownership(OwnershipError),
     MissingRun(RunId),
     UnsupportedState(RunState),
     UnknownPausedCheckpoint(Option<String>),
@@ -74,6 +76,7 @@ impl fmt::Display for FinalizationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Store(error) => error.fmt(f),
+            Self::Ownership(error) => error.fmt(f),
             Self::MissingRun(id) => write!(f, "run not found: {id}"),
             Self::UnsupportedState(state) => {
                 write!(f, "cannot finalize FASTQ artifacts from state {state}")
@@ -137,6 +140,7 @@ impl std::error::Error for FinalizationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Store(error) => Some(error),
+            Self::Ownership(error) => Some(error),
             Self::PersistedPaths(error) => Some(error),
             Self::Io { source, .. } => Some(source),
             Self::Identity(error) => Some(error),
@@ -184,6 +188,13 @@ impl FastqFinalizationExecutor {
         if current.state == RunState::Complete {
             return self.completed_result(store, current);
         }
+
+        let paths = decoded_fastq_paths(&current.fastq_paths)?;
+        let parent = validate_fastq_inputs(&paths)?;
+        // Conversion owns the FASTQ root; finalization must use the same marker.
+        let root = parent.parent().unwrap_or(&parent);
+        let _ownership = OutputOwnership::acquire(&[root])
+            .map_err(FinalizationError::Ownership)?;
 
         match current.state {
             RunState::FastqReady => self.run_compression(store, current, stop, false),
@@ -305,7 +316,7 @@ impl FastqFinalizationExecutor {
             self.persist_failure(store, &current.id, COMPRESSION_CHECKPOINT, &error)?;
             return Err(error);
         }
-        if let Err(source) = fs::rename(&staging_directory, &compressed_directory) {
+        if let Err(source) = publish_noreplace(&staging_directory, &compressed_directory) {
             let error = FinalizationError::Io {
                 operation: "finalize compressed FASTQ directory",
                 path: compressed_directory.clone(),
@@ -338,8 +349,8 @@ impl FastqFinalizationExecutor {
         if let Err(error) =
             store.record_finalized_artifacts(&current.id, ArtifactKind::CompressedFastq, &finalized)
         {
-            let cleanup = remove_owned_directory(&compressed_directory);
-            let reason = append_cleanup_warning(error.to_string(), cleanup);
+            // A finalized directory is recovery evidence, never cleanup staging.
+            let reason = error.to_string();
             let _ = store.transition_run(
                 &current.id,
                 RunState::Failed,
@@ -700,7 +711,7 @@ impl FastqFinalizationExecutor {
             let temp_manifest =
                 compressed_directory.join(format!("SHA256SUMS.tmp-attempt-{attempt}"));
             write_atomic_candidate(&temp_manifest, lines.as_bytes())?;
-            if let Err(source) = fs::rename(&temp_manifest, &manifest_path) {
+            if let Err(source) = publish_noreplace(&temp_manifest, &manifest_path) {
                 let _ = fs::remove_file(&temp_manifest);
                 return Err(FinalizationError::Io {
                     operation: "finalize checksum manifest",
@@ -731,9 +742,6 @@ impl FastqFinalizationExecutor {
                     manifest_hash,
                 ),
             ) {
-                if !manifest_preexisted {
-                    let _ = fs::remove_file(&manifest_path);
-                }
                 return Err(FinalizationError::Store(error));
             }
         } else {
@@ -1306,6 +1314,7 @@ mod tests {
             Some(64)
         );
 
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1336,6 +1345,7 @@ mod tests {
             assert_eq!(decoded, expected);
         }
 
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1372,6 +1382,7 @@ mod tests {
             .join(".compressed-attempt-1")
             .exists());
 
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1395,6 +1406,7 @@ mod tests {
         assert_eq!(second.run.state, RunState::Complete);
         assert_eq!(second.attempt, Some(2));
 
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1468,6 +1480,7 @@ mod tests {
         assert_eq!(resumed.attempt, Some(1));
         assert!(compressed_path.is_file());
 
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1529,6 +1542,7 @@ mod tests {
             fs::read(old_staging.join("keep.txt")).expect("untouched"),
             b"preserve-unproven-partial"
         );
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1577,6 +1591,7 @@ mod tests {
             1
         );
         assert_eq!(fs::read(&source).expect("source"), source_bytes);
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1608,6 +1623,7 @@ mod tests {
         );
         assert!(invalid.exists());
         assert!(dir.join("SRR000001.fastq").exists());
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1670,6 +1686,7 @@ mod tests {
                 .len(),
             1
         );
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1726,6 +1743,7 @@ mod tests {
             b"invalid checksum\n"
         );
         assert!(source.exists());
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1795,6 +1813,7 @@ mod tests {
         );
         assert_eq!(fs::read(&source).expect("raw FASTQ"), original);
         assert!(!compressed_dir.join("SHA256SUMS").exists());
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -1863,6 +1882,31 @@ mod tests {
             0
         );
 
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
+
+    #[test]
+    fn ownership_contention_does_not_mutate_checkpoint_or_originals() {
+        let root = temp_root("ownership-contention");
+        let original = b"@r\nAC\n+\nII\n";
+        let (mut store, run_id, _) = fastq_ready_store(&root, &[("SRR000001.fastq", original)]);
+        let before = store.get_run(&run_id).unwrap().unwrap();
+        let fastq_root = root.join("fastq");
+        let holder = OutputOwnership::acquire(&[&fastq_root]).unwrap();
+        assert!(matches!(
+            FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &StopToken::default()),
+            Err(FinalizationError::Ownership(OwnershipError::Busy { .. }))
+        ));
+        assert_eq!(store.get_run(&run_id).unwrap().unwrap(), before);
+        assert_eq!(fs::read(fastq_root.join("SRR000001/SRR000001.fastq")).unwrap(), original);
+        drop(holder);
+        let result = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .unwrap();
+        assert_eq!(result.run.state, RunState::Complete);
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
 }
+

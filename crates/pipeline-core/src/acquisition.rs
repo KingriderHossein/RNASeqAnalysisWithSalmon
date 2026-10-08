@@ -1,3 +1,4 @@
+use crate::ownership::{OutputOwnership, OwnershipError};
 use crate::{
     Accession, CommandOutcome, CommandRunner, InputError, ProcessContext, ProcessError, RunId,
     RunRecord, RunState, SraPlanError, SraToolkitPlanner, StateStore, StopToken, StoreError,
@@ -51,6 +52,7 @@ pub struct AcquisitionResult {
 #[derive(Debug)]
 pub enum AcquisitionError {
     Store(StoreError),
+    Ownership(OwnershipError),
     Input(InputError),
     Plan(SraPlanError),
     Process {
@@ -75,6 +77,7 @@ impl fmt::Display for AcquisitionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Store(error) => error.fmt(f),
+            Self::Ownership(error) => error.fmt(f),
             Self::Input(error) => error.fmt(f),
             Self::Plan(error) => error.fmt(f),
             Self::Process { stage, source } => {
@@ -116,6 +119,7 @@ impl std::error::Error for AcquisitionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Store(error) => Some(error),
+            Self::Ownership(error) => Some(error),
             Self::Input(error) => Some(error),
             Self::Plan(error) => Some(error),
             Self::Process { source, .. } => Some(source),
@@ -185,6 +189,13 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                 validation: None,
             });
         }
+
+        let mut roots = vec![output_root.as_ref(), log_root.as_ref()];
+        if let Some(parent) = current.sra_path.as_deref().and_then(|p| Path::new(p).parent()) {
+            roots.push(parent);
+        }
+        let _ownership = OutputOwnership::acquire(&roots)
+            .map_err(AcquisitionError::Ownership)?;
 
         let accession = Accession::parse(&current.accession_or_source)?;
 
@@ -1016,3 +1027,4 @@ mod tests {
         assert_eq!(spec.args, vec![OsString::from("arg")]);
     }
 }
+
