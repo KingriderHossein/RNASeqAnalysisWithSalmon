@@ -17,8 +17,12 @@ async fn choose_batch_file() -> Result<Option<String>, String> {
         .add_filter("Run batch", &["txt", "csv", "tsv"])
         .pick_file()
         .await
-        .map(|file| file.path().to_str().map(str::to_owned)
-            .ok_or_else(|| "batch path must be valid UTF-8".into()))
+        .map(|file| {
+            file.path()
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "batch path must be valid UTF-8".into())
+        })
         .transpose()
 }
 

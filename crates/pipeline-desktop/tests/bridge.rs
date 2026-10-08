@@ -18,19 +18,38 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 fn file_preview_has_no_job_side_effects_and_create_uses_exact_normalized_runs() {
     let workspace = Workspace::new();
     let path = workspace.0.join("runs.TSV");
-    fs::write(&path, "run\tnotes\nsrr900002\tERR999999\nDRR900001\tcontrol\nSRR900002\ttumor").unwrap();
+    fs::write(
+        &path,
+        "run\tnotes\nsrr900002\tERR999999\nDRR900001\tcontrol\nSRR900002\ttumor",
+    )
+    .unwrap();
     let preview = DesktopBridge::preview_batch(&path).unwrap();
-    assert_eq!(preview["runs"], serde_json::json!(["SRR900002", "DRR900001"]));
+    assert_eq!(
+        preview["runs"],
+        serde_json::json!(["SRR900002", "DRR900001"])
+    );
     assert_eq!(preview["duplicate_count"], 1);
     assert_eq!(preview["metadata_columns"], serde_json::json!(["notes"]));
     assert!(!workspace.0.join("module-a.sqlite").exists());
-    let runs = preview["runs"].as_array().unwrap().iter()
-        .map(|v| v.as_str().unwrap()).collect::<Vec<_>>().join("\n");
-    let created = DesktopBridge::default().create(&workspace.0, "batch", &runs, 2).unwrap();
+    let runs = preview["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let created = DesktopBridge::default()
+        .create(&workspace.0, "batch", &runs, 2)
+        .unwrap();
     assert_eq!(created["runs"].as_array().unwrap().len(), 2);
     fs::write(&path, "run\nSRR1\ninvalid").unwrap();
     assert!(DesktopBridge::preview_batch(&path).is_err());
-    assert_eq!(DesktopBridge::default().open(&workspace.0.join("module-a.sqlite"), "batch").unwrap()["runs"], created["runs"]);
+    assert_eq!(
+        DesktopBridge::default()
+            .open(&workspace.0.join("module-a.sqlite"), "batch")
+            .unwrap()["runs"],
+        created["runs"]
+    );
 }
 struct Workspace(PathBuf);
 impl Workspace {

@@ -64,12 +64,14 @@ try {
   session = opened.sessionId;
   assert.ok(session);
   await until(() => execute("return !!window.__TAURI__ && document.getElementById('host-notice').hidden;"), "native bridge initialization");
-  await execute(`document.getElementById('batch-path').value = arguments[0];
+  await execute(`document.getElementById('batch-path').closest('details').open = true;
+    document.getElementById('batch-path').value = arguments[0];
     document.getElementById('preview-batch').click();`, [batchFile]);
   await until(() => execute("return document.getElementById('batch-status').textContent.includes('2 unique runs loaded');"), "batch file preview through native IPC");
   assert.equal(await execute("return document.getElementById('runs').value;"), "SRR900001\nERR900002");
   assert.match(await execute("return document.getElementById('batch-status').textContent;"), /1 duplicate.*1 metadata/);
   assert.equal(await execute("return document.getElementById('start').disabled;"), true);
+  console.log("VISUAL_BATCH_PREVIEW:" + await request("GET", `/session/${session}/screenshot`));
   await writeFile(batchFile, "run\nSRR1\nSRX2");
   await execute("document.getElementById('preview-batch').click();");
   await until(() => execute("return !document.getElementById('error').hidden;"), "invalid batch rejected");

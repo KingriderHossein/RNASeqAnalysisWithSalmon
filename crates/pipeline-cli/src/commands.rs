@@ -57,8 +57,10 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
             print_batch(&read_run_batch(Path::new(&args[1]))?);
             Ok(0)
         }
-        "create" | "create-batch" if (utf8(command)? == "create" && args.len() >= 6)
-            || (utf8(command)? == "create-batch" && args.len() == 6) => {
+        "create" | "create-batch"
+            if (utf8(command)? == "create" && args.len() >= 6)
+                || (utf8(command)? == "create-batch" && args.len() == 6) =>
+        {
             let id = JobId::new(utf8(&args[2])?).map_err(|e| e.to_string())?;
             let threads = utf8(&args[4])?
                 .parse::<u32>()
@@ -67,10 +69,12 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
                 let batch = read_run_batch(Path::new(&args[5]))?;
                 print_batch(&batch);
                 batch.accessions
-            } else { args[5..]
-                .iter()
-                .map(|value| Accession::parse(utf8(value)?).map_err(|e| e.to_string()))
-                .collect::<Result<Vec<_>, _>>()? };
+            } else {
+                args[5..]
+                    .iter()
+                    .map(|value| Accession::parse(utf8(value)?).map_err(|e| e.to_string()))
+                    .collect::<Result<Vec<_>, _>>()?
+            };
             let mut store = StateStore::open(Path::new(&args[1])).map_err(|e| e.to_string())?;
             let job = create_job(&mut store, id, Path::new(&args[3]), threads, &accessions)
                 .map_err(|e| e.to_string())?;
