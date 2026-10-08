@@ -161,14 +161,8 @@ pub enum StoreError {
     InvalidId(IdError),
     InvalidState(StateParseError),
     InvalidTransition(TransitionError),
-    InvalidStoredValue {
-        field: &'static str,
-        value: String,
-    },
-    NotFound {
-        kind: &'static str,
-        id: String,
-    },
+    InvalidStoredValue { field: &'static str, value: String },
+    NotFound { kind: &'static str, id: String },
     UnsupportedSchema(i64),
 }
 
@@ -184,7 +178,10 @@ impl fmt::Display for StoreError {
             }
             Self::NotFound { kind, id } => write!(f, "{kind} not found: {id}"),
             Self::UnsupportedSchema(version) => {
-                write!(f, "database schema version {version} is newer than supported")
+                write!(
+                    f,
+                    "database schema version {version} is newer than supported"
+                )
             }
         }
     }
@@ -492,10 +489,7 @@ impl StateStore {
         Ok(())
     }
 
-    pub fn create_artifact(
-        &self,
-        artifact: NewArtifact,
-    ) -> Result<ArtifactRecord, StoreError> {
+    pub fn create_artifact(&self, artifact: NewArtifact) -> Result<ArtifactRecord, StoreError> {
         let now = unix_timestamp();
         self.connection.execute(
             "INSERT INTO artifacts (
@@ -519,10 +513,7 @@ impl StateStore {
             })
     }
 
-    pub fn get_artifact(
-        &self,
-        id: &ArtifactId,
-    ) -> Result<Option<ArtifactRecord>, StoreError> {
+    pub fn get_artifact(&self, id: &ArtifactId) -> Result<Option<ArtifactRecord>, StoreError> {
         let mut statement = self.connection.prepare(
             "SELECT artifact_id, run_id, kind, path, size_bytes, sha256,
                     validation_state, created_at, finalized_at
