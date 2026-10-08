@@ -166,6 +166,7 @@ pub enum StoreError {
     InvalidStoredValue { field: &'static str, value: String },
     NotFound { kind: &'static str, id: String },
     UnsupportedSchema(i64),
+    Serialization(serde_json::Error),
 }
 
 impl fmt::Display for StoreError {
@@ -186,6 +187,7 @@ impl fmt::Display for StoreError {
                     "database schema version {version} is newer than supported"
                 )
             }
+            Self::Serialization(error) => write!(f, "state serialization error: {error}"),
         }
     }
 }
@@ -198,6 +200,7 @@ impl std::error::Error for StoreError {
             Self::InvalidState(error) => Some(error),
             Self::InvalidTransition(error) => Some(error),
             Self::InvalidRetryTransition(error) => Some(error),
+            Self::Serialization(error) => Some(error),
             Self::InvalidStoredValue { .. }
             | Self::NotFound { .. }
             | Self::UnsupportedSchema(_) => None,
@@ -594,6 +597,57 @@ impl StateStore {
             });
         }
 
+        Ok(())
+    }
+
+    pub fn record_finalized_fastq_artifacts(
+        &mut self,
+        run_id: &RunId,
+        artifacts: &[(ArtifactId, String, i64)],
+    ) -> Result<(), StoreError> {
+        let paths = artifacts
+            .iter()
+            .map(|(_, path, _)| path.as_str())
+            .collect::<Vec<_>>();
+        let fastq_paths = serde_json::to_string(&paths).map_err(StoreError::Serialization)?;
+        let now = unix_timestamp();
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let changed = transaction.execute(
+            "UPDATE runs
+             SET fastq_paths = ?2, updated_at = ?3
+             WHERE run_id = ?1",
+            params![run_id.as_str(), fastq_paths, now],
+        )?;
+
+        if changed == 0 {
+            return Err(StoreError::NotFound {
+                kind: "run",
+                id: run_id.to_string(),
+            });
+        }
+
+        for (artifact_id, path, size_bytes) in artifacts {
+            transaction.execute(
+                "INSERT INTO artifacts (
+                    artifact_id, run_id, kind, path, size_bytes, sha256,
+                    validation_state, created_at, finalized_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?7)",
+                params![
+                    artifact_id.as_str(),
+                    run_id.as_str(),
+                    ArtifactKind::Fastq.to_string(),
+                    path,
+                    size_bytes,
+                    ArtifactValidationState::Pending.to_string(),
+                    now,
+                ],
+            )?;
+        }
+
+        transaction.commit()?;
         Ok(())
     }
 
