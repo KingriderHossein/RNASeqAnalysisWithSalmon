@@ -1,5 +1,7 @@
 use pipeline_core::{
-    coordinator::{create_job, terminal_job_report, ControlIntent, DriveMode, JobControl, JobCoordinator},
+    coordinator::{
+        create_job, terminal_job_report, ControlIntent, DriveMode, JobControl, JobCoordinator,
+    },
     Accession, JobId, JobState, SraToolkitPlanner, StateStore, SystemCommandRunner, ToolRegistry,
 };
 use std::{ffi::OsString, path::Path};
@@ -56,7 +58,8 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
         }
         "inspect" if args.len() == 3 => {
             let id = JobId::new(utf8(&args[2])?).map_err(|e| e.to_string())?;
-            let store = StateStore::open_existing(Path::new(&args[1])).map_err(|e| e.to_string())?;
+            let store =
+                StateStore::open_existing(Path::new(&args[1])).map_err(|e| e.to_string())?;
             let job = store
                 .get_job(&id)
                 .map_err(|e| e.to_string())?
@@ -102,10 +105,15 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
                 _ => DriveMode::Retry,
             };
             let id = JobId::new(utf8(&args[2])?).map_err(|e| e.to_string())?;
-            let mut store = StateStore::open_existing(Path::new(&args[1])).map_err(|e| e.to_string())?;
+            let mut store =
+                StateStore::open_existing(Path::new(&args[1])).map_err(|e| e.to_string())?;
             if let Some(report) = terminal_job_report(&store, &id).map_err(|e| e.to_string())? {
                 println!("job={id} state={}", report.state);
-                return Ok(if report.state == JobState::Complete { 0 } else { 4 });
+                return Ok(if report.state == JobState::Complete {
+                    0
+                } else {
+                    4
+                });
             }
             let planner = SraToolkitPlanner::new(
                 ToolRegistry::discover_sra_toolkit().map_err(|e| e.to_string())?,

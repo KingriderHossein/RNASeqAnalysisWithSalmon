@@ -75,14 +75,35 @@ fn create_inspect_pause_cancel_and_duplicate_preservation() {
         .status()
         .unwrap()
         .success());
-    for run in store.list_job_runs(&pipeline_core::JobId::new("job").unwrap()).unwrap() {
-        store.transition_run(&run.id, pipeline_core::RunState::Cancelled, None, None).unwrap();
+    for run in store
+        .list_job_runs(&pipeline_core::JobId::new("job").unwrap())
+        .unwrap()
+    {
+        store
+            .transition_run(&run.id, pipeline_core::RunState::Cancelled, None, None)
+            .unwrap();
     }
     drop(store);
-    let resumed = binary().arg("resume").arg(&db).arg("job").env("PATH", "").output().unwrap();
-    assert_eq!(resumed.status.code(), Some(4), "terminal jobs need no tool discovery");
+    let resumed = binary()
+        .arg("resume")
+        .arg(&db)
+        .arg("job")
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert_eq!(
+        resumed.status.code(),
+        Some(4),
+        "terminal jobs need no tool discovery"
+    );
     let missing = root.join("missing.sqlite");
-    assert!(!binary().arg("inspect").arg(&missing).arg("job").status().unwrap().success());
+    assert!(!binary()
+        .arg("inspect")
+        .arg(&missing)
+        .arg("job")
+        .status()
+        .unwrap()
+        .success());
     assert!(!missing.exists());
     fs::remove_dir_all(root).unwrap();
 }

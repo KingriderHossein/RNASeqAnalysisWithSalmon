@@ -338,7 +338,8 @@ impl StateStore {
             });
         }
         let (lock, path) = ExclusivePathLock::database(path).map_err(StoreError::Ownership)?;
-        let mut connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        let mut connection =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
         Ok(Self {
@@ -1078,6 +1079,18 @@ mod tests {
             "rnaseq-pipeline-state-{}-{nonce}.sqlite",
             process::id()
         ))
+    }
+
+    #[test]
+    fn resolved_batch_rolls_back_job_and_siblings_on_insert_failure() {
+        let mut store = StateStore::open_in_memory().expect("store");
+        let job = sample_job();
+        let run = sample_run(&job.id);
+        assert!(store
+            .create_resolved_job(job.clone(), &[run.clone(), run])
+            .is_err());
+        assert!(store.get_job(&job.id).expect("query").is_none());
+        assert!(store.list_job_runs(&job.id).expect("query").is_empty());
     }
 
     #[test]

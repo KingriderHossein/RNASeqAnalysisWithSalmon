@@ -1,8 +1,8 @@
 use pipeline_core::{
     coordinator::{create_job, ControlIntent, DriveMode, JobControl, JobCoordinator, JobEvent},
-    Accession, ArtifactId, ArtifactKind, CommandOutcome, CommandRunner, CommandSpec, JobId, JobState, OutputOwnership,
-    ProcessContext, ProcessError, RunState, SraToolkitPlanner, StateStore, StopToken, ToolInfo,
-    ToolKind, ToolRegistry,
+    Accession, ArtifactId, ArtifactKind, CommandOutcome, CommandRunner, CommandSpec, JobId,
+    JobState, OutputOwnership, ProcessContext, ProcessError, RunState, SraToolkitPlanner,
+    StateStore, StopToken, ToolInfo, ToolKind, ToolRegistry,
 };
 use std::{
     ffi::OsString,
@@ -175,7 +175,9 @@ fn failed_run_isolated_and_only_explicit_retry_reexecutes_it() {
     assert_eq!(first.state, JobState::Failed);
     assert_eq!(first.runs[0].state, RunState::Complete);
     assert_eq!(first.runs[1].state, RunState::Failed);
-    let sibling = f.job_root.join("fastq/SRR900001/compressed/SRR900001.fastq.gz");
+    let sibling = f
+        .job_root
+        .join("fastq/SRR900001/compressed/SRR900001.fastq.gz");
     let sibling_bytes = fs::read(&sibling).unwrap();
     let count = runner.seen.lock().unwrap().len();
     coordinator
@@ -349,6 +351,38 @@ fn existing_destination_and_duplicate_or_study_input_are_rejected() {
 }
 
 #[test]
+fn pause_keeps_completed_sibling_and_its_bytes_unchanged() {
+    let (f, mut store) = fixture(&["SRR900001", "SRR900002"]);
+    let planner = planner();
+    let runner = FakeRunner::default();
+    let control = JobControl::open(&f.job_root).unwrap();
+    let coordinator = JobCoordinator::new(&planner, &runner);
+    let paused = coordinator
+        .drive(&mut store, &f.id, DriveMode::Start, |event| {
+            if let JobEvent::RunSnapshot { run, .. } = event {
+                if run.state == RunState::Complete {
+                    control.request(ControlIntent::Pause).unwrap();
+                }
+            }
+        })
+        .unwrap();
+    assert_eq!(paused.state, JobState::Paused);
+    assert_eq!(paused.runs[0].state, RunState::Complete);
+    assert_eq!(paused.runs[1].state, RunState::Ready);
+    let path = f.job_root.join("fastq/SRR900001/compressed/SRR900001.fastq.gz");
+    let bytes = fs::read(&path).unwrap();
+    drop(store);
+    let mut store = StateStore::open_existing(&f.db).unwrap();
+    let complete = coordinator
+        .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+        .unwrap();
+    assert_eq!(complete.state, JobState::Complete);
+    assert_eq!(complete.runs[0], paused.runs[0]);
+    assert_eq!(fs::read(path).unwrap(), bytes);
+    drop(store);
+}
+
+#[test]
 fn output_contention_does_not_change_state_or_attempts() {
     let (f, mut store) = fixture(&["SRR900001"]);
     let before = store.list_job_runs(&f.id).unwrap();
@@ -366,50 +400,83 @@ fn output_contention_does_not_change_state_or_attempts() {
 
 #[test]
 fn restart_dispatches_all_safe_acquisition_checkpoints() {
-    for state in [RunState::Ready, RunState::Paused, RunState::WaitingForNetwork, RunState::Downloaded] {
+    for state in [
+        RunState::Ready,
+        RunState::Paused,
+        RunState::WaitingForNetwork,
+        RunState::Downloaded,
+    ] {
         let (f, mut store) = fixture(&["SRR900001"]);
         let id = store.list_job_runs(&f.id).unwrap()[0].id.clone();
         if state != RunState::Ready {
-            store.transition_run(&id, RunState::Downloading, Some("prefetch"), None).unwrap();
+            store
+                .transition_run(&id, RunState::Downloading, Some("prefetch"), None)
+                .unwrap();
             if state == RunState::Downloaded {
                 let path = f.job_root.join("sra/SRR900001");
                 fs::create_dir_all(&path).unwrap();
                 fs::write(path.join("SRR900001.sra"), b"synthetic").unwrap();
-                store.update_run_download_snapshot(&id, 9, path.to_str().unwrap()).unwrap();
-                store.transition_run(&id, state, Some("prefetch-complete"), None).unwrap();
+                store
+                    .update_run_download_snapshot(&id, 9, path.to_str().unwrap())
+                    .unwrap();
+                store
+                    .transition_run(&id, state, Some("prefetch-complete"), None)
+                    .unwrap();
             } else {
-                store.transition_run(&id, state, Some("prefetch"), None).unwrap();
+                store
+                    .transition_run(&id, state, Some("prefetch"), None)
+                    .unwrap();
             }
         }
         drop(store);
         let mut store = StateStore::open_existing(&f.db).unwrap();
         let planner = planner();
         let runner = FakeRunner::default();
-        let report = JobCoordinator::new(&planner, &runner).drive(&mut store, &f.id, DriveMode::Resume, |_| {}).unwrap();
+        let report = JobCoordinator::new(&planner, &runner)
+            .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+            .unwrap();
         assert_eq!(report.state, JobState::Complete, "{state}");
         let first = runner.seen.lock().unwrap()[0].clone();
-        assert_eq!(first, if state == RunState::Downloaded { "vdb-validate" } else { "prefetch" });
+        assert_eq!(
+            first,
+            if state == RunState::Downloaded {
+                "vdb-validate"
+            } else {
+                "prefetch"
+            }
+        );
         drop(store);
     }
 }
 
 #[test]
 fn restart_dispatches_finalization_checkpoints_without_external_tools() {
-    for state in [RunState::FastqReady, RunState::Compressing, RunState::Checksumming, RunState::PausedAtBoundary] {
+    for state in [
+        RunState::FastqReady,
+        RunState::Compressing,
+        RunState::Checksumming,
+        RunState::PausedAtBoundary,
+    ] {
         let (f, mut store) = fixture(&["SRR900001"]);
         let planner = planner();
         let runner = FakeRunner::default();
         let coordinator = JobCoordinator::new(&planner, &runner);
         let control = JobControl::open(&f.job_root).unwrap();
-        let paused = coordinator.drive(&mut store, &f.id, DriveMode::Start, |event| {
-            if let JobEvent::RunSnapshot { run, .. } = event {
-                if run.state == RunState::FastqReady { control.request(ControlIntent::Pause).unwrap(); }
-            }
-        }).unwrap();
+        let paused = coordinator
+            .drive(&mut store, &f.id, DriveMode::Start, |event| {
+                if let JobEvent::RunSnapshot { run, .. } = event {
+                    if run.state == RunState::FastqReady {
+                        control.request(ControlIntent::Pause).unwrap();
+                    }
+                }
+            })
+            .unwrap();
         assert_eq!(paused.runs[0].state, RunState::FastqReady);
         let id = &paused.runs[0].id;
         if state != RunState::FastqReady {
-            store.transition_run(id, RunState::Compressing, Some("gzip"), None).unwrap();
+            store
+                .transition_run(id, RunState::Compressing, Some("gzip"), None)
+                .unwrap();
         }
         if state == RunState::Checksumming {
             use flate2::{write::GzEncoder, Compression};
@@ -417,21 +484,44 @@ fn restart_dispatches_finalization_checkpoints_without_external_tools() {
             let directory = f.job_root.join("fastq/SRR900001/compressed");
             fs::create_dir(&directory).unwrap();
             let path = directory.join("SRR900001.fastq.gz");
-            let mut encoder = GzEncoder::new(fs::File::create(&path).unwrap(), Compression::default());
+            let mut encoder =
+                GzEncoder::new(fs::File::create(&path).unwrap(), Compression::default());
             encoder.write_all(b"@synthetic\nACGT\n+\nIIII\n").unwrap();
             encoder.finish().unwrap();
-            store.record_finalized_artifacts(id, ArtifactKind::CompressedFastq, &[(ArtifactId::new("synthetic-gzip").unwrap(), path.to_str().unwrap().into(), fs::metadata(&path).unwrap().len() as i64)]).unwrap();
-            store.transition_run(id, state, Some("sha256"), None).unwrap();
+            store
+                .record_finalized_artifacts(
+                    id,
+                    ArtifactKind::CompressedFastq,
+                    &[(
+                        ArtifactId::new("synthetic-gzip").unwrap(),
+                        path.to_str().unwrap().into(),
+                        fs::metadata(&path).unwrap().len() as i64,
+                    )],
+                )
+                .unwrap();
+            store
+                .transition_run(id, state, Some("sha256"), None)
+                .unwrap();
         } else if state == RunState::PausedAtBoundary {
             store.transition_run(id, state, Some("gzip"), None).unwrap();
         }
         drop(store);
         let mut store = StateStore::open_existing(&f.db).unwrap();
         let before = runner.seen.lock().unwrap().len();
-        let report = coordinator.drive(&mut store, &f.id, DriveMode::Resume, |_| {}).unwrap();
-        assert_eq!(report.state, JobState::Complete, "{state}: {:?}", report.errors);
+        let report = coordinator
+            .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+            .unwrap();
+        assert_eq!(
+            report.state,
+            JobState::Complete,
+            "{state}: {:?}",
+            report.errors
+        );
         assert_eq!(runner.seen.lock().unwrap().len(), before);
-        assert!(f.job_root.join("fastq/SRR900001/compressed/SHA256SUMS").is_file());
+        assert!(f
+            .job_root
+            .join("fastq/SRR900001/compressed/SHA256SUMS")
+            .is_file());
         drop(store);
     }
 }
@@ -443,11 +533,15 @@ fn changed_toolchain_retains_pause_and_never_spawns() {
     let runner = FakeRunner::default();
     let control = JobControl::open(&f.job_root).unwrap();
     control.request(ControlIntent::Pause).unwrap();
-    JobCoordinator::new(&original, &runner).drive(&mut store, &f.id, DriveMode::Start, |_| {}).unwrap();
+    JobCoordinator::new(&original, &runner)
+        .drive(&mut store, &f.id, DriveMode::Start, |_| {})
+        .unwrap();
     let mut tools = original.tools().clone();
     tools.prefetch.version_output = "changed".into();
     let changed = SraToolkitPlanner::new(tools);
-    let error = JobCoordinator::new(&changed, &runner).drive(&mut store, &f.id, DriveMode::Resume, |_| {}).unwrap_err();
+    let error = JobCoordinator::new(&changed, &runner)
+        .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+        .unwrap_err();
     assert!(error.to_string().contains("tool paths/versions changed"));
     assert_eq!(control.intent().unwrap(), ControlIntent::Pause);
     assert!(runner.seen.lock().unwrap().is_empty());

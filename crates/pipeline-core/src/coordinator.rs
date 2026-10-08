@@ -174,7 +174,9 @@ pub struct JobReport {
 
 /// Terminal jobs can be reconciled without probing or launching external tools.
 pub fn terminal_job_report(store: &StateStore, id: &JobId) -> Result<Option<JobReport>, JobError> {
-    let job = store.get_job(id)?.ok_or_else(|| JobError::Invalid(format!("job not found: {id}")))?;
+    let job = store
+        .get_job(id)?
+        .ok_or_else(|| JobError::Invalid(format!("job not found: {id}")))?;
     let runs = store.list_job_runs(id)?;
     validate_plan(&job, &runs)?;
     if runs.iter().all(|run| run.state.is_terminal()) {
@@ -299,7 +301,9 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
         ])?;
         let control = JobControl::open(root)?;
         if fs::read(root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
-            return Err(JobError::Invalid("job destination identity does not match the database".into()));
+            return Err(JobError::Invalid(
+                "job destination identity does not match the database".into(),
+            ));
         }
         let tools =
             json!(ToolKind::SRA_REQUIRED.iter().map(|kind| {
