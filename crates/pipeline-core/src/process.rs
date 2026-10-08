@@ -209,7 +209,11 @@ impl fmt::Display for ProcessError {
         match self {
             Self::InvalidLogPrefix(prefix) => write!(f, "invalid process log prefix: {prefix}"),
             Self::CreateLogDirectory { path, source } => {
-                write!(f, "cannot create log directory {}: {source}", path.display())
+                write!(
+                    f,
+                    "cannot create log directory {}: {source}",
+                    path.display()
+                )
             }
             Self::CreateLogFile { path, source } => {
                 write!(f, "cannot create new log file {}: {source}", path.display())
@@ -218,7 +222,11 @@ impl fmt::Display for ProcessError {
                 write!(f, "cannot start process {}: {source}", program.display())
             }
             Self::Wait { program, source } => {
-                write!(f, "cannot read process status for {}: {source}", program.display())
+                write!(
+                    f,
+                    "cannot read process status for {}: {source}",
+                    program.display()
+                )
             }
             Self::Kill { program, source } => {
                 write!(f, "cannot stop process {}: {source}", program.display())
@@ -255,8 +263,7 @@ fn create_log_file(path: &Path) -> Result<std::fs::File, ProcessError> {
 mod tests {
     use super::*;
     use std::{
-        fs,
-        process,
+        fs, process,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -370,8 +377,11 @@ mod tests {
         let child_token = token.clone();
 
         let handle = thread::spawn(move || {
-            SystemCommandRunner::with_poll_interval(Duration::from_millis(20))
-                .run(&spec, &context, &child_token)
+            SystemCommandRunner::with_poll_interval(Duration::from_millis(20)).run(
+                &spec,
+                &context,
+                &child_token,
+            )
         });
 
         thread::sleep(Duration::from_millis(150));
