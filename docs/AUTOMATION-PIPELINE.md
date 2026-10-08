@@ -61,6 +61,8 @@ Rules:
 
 Purpose: reliably obtain raw sequencing data without requiring the user to edit code.
 
+Detailed Module A contract: [DOWNLOAD-MANAGER-ARCHITECTURE.md](DOWNLOAD-MANAGER-ARCHITECTURE.md).
+
 Inputs may include:
 - one accession;
 - a batch accession file;
