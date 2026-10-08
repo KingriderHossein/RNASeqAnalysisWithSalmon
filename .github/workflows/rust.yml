@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "Cargo.toml"
+      - "Cargo.lock"
       - "crates/**"
       - ".github/workflows/rust.yml"
   push:
     branches: [main]
     paths:
       - "Cargo.toml"
+      - "Cargo.lock"
       - "crates/**"
       - ".github/workflows/rust.yml"
 
@@ -33,6 +35,9 @@ jobs:
           rustc --version
           cargo --version
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Format
         run: cargo fmt --all -- --check
 
@@ -48,6 +53,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test crates/pipeline-desktop/ui/tests/presentation.test.mjs
 
+      - name: Resolved dependency checkpoint
+        if: runner.os == 'Linux' && success()
+        run: |
+          echo LOCKFILE_START
+          cat Cargo.lock
+          echo LOCKFILE_END
+
   desktop:
     strategy:
       fail-fast: false
@@ -59,6 +71,8 @@ jobs:
         uses: actions/checkout@v7
       - name: Toolchain
         run: rustup default stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: |

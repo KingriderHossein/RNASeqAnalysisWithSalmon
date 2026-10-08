@@ -61,13 +61,14 @@ try {
   const opened = await request("POST", "/session", { capabilities: { alwaysMatch: { "tauri:options": { application: resolve("target/debug/rnaseq-desktop") } } } });
   session = opened.sessionId;
   assert.ok(session);
-  await until(() => execute("return !!window.__TAURI__ && !document.getElementById('host-notice').hidden === false;"), "native bridge initialization");
+  await until(() => execute("return !!window.__TAURI__ && document.getElementById('host-notice').hidden;"), "native bridge initialization");
   await execute(`document.getElementById('job-id').value = 'native-synthetic';
     document.getElementById('runs').value = 'SRR900001\\nERR900002';
     document.getElementById('workspace').value = arguments[0];
     document.getElementById('create-form').requestSubmit();`, [workspace]);
   await until(() => execute("return document.getElementById('job-title').textContent === 'native-synthetic';"), "create through native IPC");
   assert.equal(await execute("return document.querySelectorAll('#run-rows tr').length;"), 2);
+  console.log("VISUAL_QUEUED:" + await request("GET", `/session/${session}/screenshot`));
   await execute("document.getElementById('start').click();");
   await until(() => execute("return !document.getElementById('pause').disabled;"), "active worker");
   await execute("document.getElementById('pause').click();");
@@ -85,6 +86,7 @@ try {
   assert.equal(await readFile(manifest, "utf8"), original);
   assert.ok(!(await execute("return document.getElementById('run-rows').textContent;")).includes("%"));
   assert.equal(await execute("return document.getElementById('error').hidden;"), true);
+  console.log("VISUAL_COMPLETE:" + await request("GET", `/session/${session}/screenshot`));
   console.log("PASS: real Linux Tauri IPC create/batch/start/pause/resume/complete/refresh; synthetic tools only; checksum retained; unknown totals have no percentage.");
 } catch (error) {
   console.error(diagnostics);

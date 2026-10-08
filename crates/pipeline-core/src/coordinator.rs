@@ -202,8 +202,14 @@ pub fn terminal_job_report(store: &StateStore, id: &JobId) -> Result<Option<JobR
 
 /// Idle cancellation needs no tool discovery. Ambiguous process checkpoints
 /// stay unchanged; cancelling other safe runs never claims those tools exited.
-pub fn cancel_job(store: &mut StateStore, id: &JobId, mut emit: impl FnMut(JobEvent)) -> Result<JobReport, JobError> {
-    let job = store.get_job(id)?.ok_or_else(|| JobError::Invalid(format!("job not found: {id}")))?;
+pub fn cancel_job(
+    store: &mut StateStore,
+    id: &JobId,
+    mut emit: impl FnMut(JobEvent),
+) -> Result<JobReport, JobError> {
+    let job = store
+        .get_job(id)?
+        .ok_or_else(|| JobError::Invalid(format!("job not found: {id}")))?;
     let runs = store.list_job_runs(id)?;
     validate_plan(&job, &runs)?;
     if runs.iter().all(|run| run.state.is_terminal()) {
@@ -212,17 +218,25 @@ pub fn cancel_job(store: &mut StateStore, id: &JobId, mut emit: impl FnMut(JobEv
     let _ownership = acquire_job_outputs(&job)?;
     let root = Path::new(&job.output_root);
     if fs::read(root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
-        return Err(JobError::Invalid("job destination identity does not match the database".into()));
+        return Err(JobError::Invalid(
+            "job destination identity does not match the database".into(),
+        ));
     }
     JobControl::open(root)?.request(ControlIntent::Cancel)?;
     let mut errors = Vec::new();
     for run in runs {
-        if run.state.is_terminal() { snapshot(&run, &mut emit); continue; }
+        if run.state.is_terminal() {
+            snapshot(&run, &mut emit);
+            continue;
+        }
         match cancel_run_at_boundary(store, &run) {
             Ok(cancelled) => snapshot(&cancelled, &mut emit),
             Err(error) => {
                 let message = error.to_string();
-                emit(JobEvent::RunError { run_id: run.id.clone(), message: message.clone() });
+                emit(JobEvent::RunError {
+                    run_id: run.id.clone(),
+                    message: message.clone(),
+                });
                 errors.push((run.id, message));
             }
         }
@@ -232,11 +246,20 @@ pub fn cancel_job(store: &mut StateStore, id: &JobId, mut emit: impl FnMut(JobEv
 
 fn acquire_job_outputs(job: &JobRecord) -> Result<OutputOwnership, JobError> {
     let root = Path::new(&job.output_root);
-    Ok(OutputOwnership::acquire(&[root, &root.join("sra"), &root.join("fastq"), &root.join("temp"), &root.join("logs")])?)
+    Ok(OutputOwnership::acquire(&[
+        root,
+        &root.join("sra"),
+        &root.join("fastq"),
+        &root.join("temp"),
+        &root.join("logs"),
+    ])?)
 }
 
 fn ensure_safe_checkpoint(run: &RunRecord) -> Result<(), JobError> {
-    if matches!(run.state, RunState::Downloading | RunState::Validating | RunState::Converting) {
+    if matches!(
+        run.state,
+        RunState::Downloading | RunState::Validating | RunState::Converting
+    ) {
         return Err(JobError::Stage(format!("{} is {}; automatic recovery is blocked because a previous tool/descendant may still write. Do not reset state or remove lock files. Process-lifetime reconciliation is required", run.id, run.state)));
     }
     Ok(())
@@ -244,7 +267,12 @@ fn ensure_safe_checkpoint(run: &RunRecord) -> Result<(), JobError> {
 
 fn cancel_run_at_boundary(store: &mut StateStore, run: &RunRecord) -> Result<RunRecord, JobError> {
     ensure_safe_checkpoint(run)?;
-    Ok(store.transition_run(&run.id, RunState::Cancelled, run.last_checkpoint.as_deref(), None)?)
+    Ok(store.transition_run(
+        &run.id,
+        RunState::Cancelled,
+        run.last_checkpoint.as_deref(),
+        None,
+    )?)
 }
 
 pub fn create_job(
@@ -451,7 +479,10 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
             // only proves direct-child termination, not a whole descendant tree.
             let stop = StopToken::default();
             let stage = dispatch(&run)?;
-            emit(JobEvent::StageStarting { run_id: id.clone(), stage });
+            emit(JobEvent::StageStarting {
+                run_id: id.clone(),
+                stage,
+            });
             match stage {
                 JobStage::Acquisition => {
                     SraAcquisitionExecutor::new(self.planner, self.runner)

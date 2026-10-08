@@ -33,7 +33,7 @@ function render(next) {
   const { job, runs, actions = {}, activity } = snapshot;
   $("job-title").textContent = job.id;
   $("job-summary").textContent = `${runs.length} run${runs.length === 1 ? "" : "s"} · ${runs.filter((run) => run.state === "COMPLETE").length} complete`;
-  $("job-state").textContent = stateLabel(job.state);
+  $("job-state").textContent = snapshot.active ? "Worker active" : stateLabel(job.state);
   $("job-state").hidden = false;
   $("start").textContent = actions.primary_label ?? "Start job";
   $("start").disabled = !actions.primary;
