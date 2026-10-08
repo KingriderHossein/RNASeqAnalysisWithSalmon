@@ -14,7 +14,8 @@ pub use acquisition::{
     SraAcquisitionExecutor,
 };
 pub use conversion::{
-    ConversionDisposition, ConversionError, ConversionResult, FasterqConversionExecutor,
+    ConversionDisposition, ConversionError, ConversionRequest, ConversionResult,
+    FasterqConversionExecutor,
 };
 pub use identity::{ArtifactId, IdError, JobId, RunId};
 pub use input::{
