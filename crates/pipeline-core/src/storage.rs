@@ -108,16 +108,32 @@ impl fmt::Display for StorageError {
                 write!(f, "destination does not exist: {}", path.display())
             }
             Self::ProbeCreate { path, source } => {
-                write!(f, "destination is not writable at {}: {source}", path.display())
+                write!(
+                    f,
+                    "destination is not writable at {}: {source}",
+                    path.display()
+                )
             }
             Self::ProbeWrite { path, source } => {
-                write!(f, "cannot write destination probe {}: {source}", path.display())
+                write!(
+                    f,
+                    "cannot write destination probe {}: {source}",
+                    path.display()
+                )
             }
             Self::ProbeCleanup { path, source } => {
-                write!(f, "cannot remove destination probe {}: {source}", path.display())
+                write!(
+                    f,
+                    "cannot remove destination probe {}: {source}",
+                    path.display()
+                )
             }
             Self::SpaceQuery { path, source } => {
-                write!(f, "cannot query filesystem space for {}: {source}", path.display())
+                write!(
+                    f,
+                    "cannot query filesystem space for {}: {source}",
+                    path.display()
+                )
             }
         }
     }
@@ -149,9 +165,11 @@ impl StorageInspector {
 
         if !destination.exists() {
             if create_if_missing {
-                fs::create_dir_all(&destination).map_err(|source| StorageError::CreateDirectory {
-                    path: destination.clone(),
-                    source,
+                fs::create_dir_all(&destination).map_err(|source| {
+                    StorageError::CreateDirectory {
+                        path: destination.clone(),
+                        source,
+                    }
                 })?;
             } else {
                 return Err(StorageError::MissingDirectory(destination));
