@@ -25,7 +25,9 @@ pub enum FinalizationStage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinalizationDisposition {
     Complete,
-    PausedAtBoundary { stage: FinalizationStage },
+    PausedAtBoundary {
+        stage: FinalizationStage,
+    },
     Failed {
         stage: FinalizationStage,
         reason: String,
@@ -84,7 +86,9 @@ impl fmt::Display for FinalizationError {
                 "cannot determine finalization retry stage from checkpoint {:?}",
                 checkpoint
             ),
-            Self::PersistedPaths(error) => write!(f, "cannot decode persisted FASTQ paths: {error}"),
+            Self::PersistedPaths(error) => {
+                write!(f, "cannot decode persisted FASTQ paths: {error}")
+            }
             Self::MissingFastqPaths => f.write_str("run has no finalized FASTQ paths to compress"),
             Self::InvalidFastqPath(path) => write!(
                 f,
@@ -349,8 +353,7 @@ impl FastqFinalizationExecutor {
         stop: &StopToken,
         retry: bool,
     ) -> Result<FinalizationResult, FinalizationError> {
-        let artifacts =
-            store.list_artifacts_by_kind(&current.id, ArtifactKind::CompressedFastq)?;
+        let artifacts = store.list_artifacts_by_kind(&current.id, ArtifactKind::CompressedFastq)?;
         let compressed_paths = compressed_paths_from_artifacts(&artifacts)?;
         let compressed_directory = common_parent(&compressed_paths)?;
         let attempt = store.begin_run_attempt(&current.id)?;
@@ -436,8 +439,7 @@ impl FastqFinalizationExecutor {
             }
         }
 
-        let temp_manifest =
-            compressed_directory.join(format!("SHA256SUMS.tmp-attempt-{attempt}"));
+        let temp_manifest = compressed_directory.join(format!("SHA256SUMS.tmp-attempt-{attempt}"));
         write_atomic_candidate(&temp_manifest, lines.as_bytes())?;
         if let Err(source) = fs::rename(&temp_manifest, &manifest_path) {
             let _ = fs::remove_file(&temp_manifest);
@@ -479,12 +481,8 @@ impl FastqFinalizationExecutor {
             return Err(FinalizationError::Store(error));
         }
 
-        let run = store.transition_run(
-            run_id,
-            RunState::Complete,
-            Some(COMPLETE_CHECKPOINT),
-            None,
-        )?;
+        let run =
+            store.transition_run(run_id, RunState::Complete, Some(COMPLETE_CHECKPOINT), None)?;
 
         Ok(FinalizationResult {
             run,
@@ -563,9 +561,8 @@ fn validate_fastq_inputs(paths: &[PathBuf]) -> Result<PathBuf, FinalizationError
     }
     let parent = common_parent(paths)?;
     for path in paths {
-        let metadata = fs::symlink_metadata(path).map_err(|_| {
-            FinalizationError::InvalidFastqPath(path.clone())
-        })?;
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|_| FinalizationError::InvalidFastqPath(path.clone()))?;
         if !metadata.file_type().is_file() || metadata.len() == 0 {
             return Err(FinalizationError::InvalidFastqPath(path.clone()));
         }
@@ -649,11 +646,13 @@ fn gzip_file(
             path: target.to_path_buf(),
             source: source_error,
         })?;
-    output.sync_all().map_err(|source_error| FinalizationError::Io {
-        operation: "sync staged gzip",
-        path: target.to_path_buf(),
-        source: source_error,
-    })?;
+    output
+        .sync_all()
+        .map_err(|source_error| FinalizationError::Io {
+            operation: "sync staged gzip",
+            path: target.to_path_buf(),
+            source: source_error,
+        })?;
     Ok(StreamOutcome::Complete)
 }
 
@@ -766,18 +765,12 @@ fn remove_owned_directory(path: &Path) -> Result<(), FinalizationError> {
 }
 
 fn cleanup_warning(result: Result<(), FinalizationError>) -> Option<String> {
-    result.err().map(|error| {
-        format!(
-            "compression staging cleanup needs attention: {}",
-            error
-        )
-    })
+    result
+        .err()
+        .map(|error| format!("compression staging cleanup needs attention: {}", error))
 }
 
-fn append_cleanup_warning(
-    reason: String,
-    cleanup: Result<(), FinalizationError>,
-) -> String {
+fn append_cleanup_warning(reason: String, cleanup: Result<(), FinalizationError>) -> String {
     match cleanup_warning(cleanup) {
         Some(warning) => format!("{reason}; {warning}"),
         None => reason,
@@ -914,9 +907,8 @@ mod tests {
             .join("SRR000001.fastq")
             .is_file());
 
-        let mut decoder = GzDecoder::new(
-            fs::File::open(&result.compressed_paths[0]).expect("gzip"),
-        );
+        let mut decoder =
+            GzDecoder::new(fs::File::open(&result.compressed_paths[0]).expect("gzip"));
         let mut decoded = Vec::new();
         decoder.read_to_end(&mut decoded).expect("decode");
         assert_eq!(decoded, original);
@@ -925,10 +917,14 @@ mod tests {
         let manifest_text = fs::read_to_string(&manifest).expect("manifest text");
         assert!(manifest_text.contains("SRR000001.fastq.gz"));
 
-        let compressed =
-            store.list_artifacts_by_kind(&run_id, ArtifactKind::CompressedFastq).expect("artifacts");
+        let compressed = store
+            .list_artifacts_by_kind(&run_id, ArtifactKind::CompressedFastq)
+            .expect("artifacts");
         assert_eq!(compressed.len(), 1);
-        assert_eq!(compressed[0].validation_state, ArtifactValidationState::Valid);
+        assert_eq!(
+            compressed[0].validation_state,
+            ArtifactValidationState::Valid
+        );
         let persisted_hash = compressed[0].sha256.as_deref().expect("compressed SHA-256");
         assert_eq!(persisted_hash.len(), 64);
 
@@ -947,15 +943,19 @@ mod tests {
         };
         assert_eq!(actual_hash, persisted_hash);
 
-        let checksum_artifacts =
-            store.list_artifacts_by_kind(&run_id, ArtifactKind::Checksum).expect("checksum");
+        let checksum_artifacts = store
+            .list_artifacts_by_kind(&run_id, ArtifactKind::Checksum)
+            .expect("checksum");
         assert_eq!(checksum_artifacts.len(), 1);
         assert_eq!(
             checksum_artifacts[0].validation_state,
             ArtifactValidationState::Valid
         );
         assert_eq!(checksum_artifacts[0].path, manifest.to_string_lossy());
-        assert_eq!(checksum_artifacts[0].sha256.as_ref().map(String::len), Some(64));
+        assert_eq!(
+            checksum_artifacts[0].sha256.as_ref().map(String::len),
+            Some(64)
+        );
 
         fs::remove_dir_all(root).expect("cleanup");
     }
@@ -967,10 +967,7 @@ mod tests {
         let two = b"@r/2\nGT\n+\nII\n";
         let (mut store, run_id, _) = fastq_ready_store(
             &root,
-            &[
-                ("SRR000001_1.fastq", one),
-                ("SRR000001_2.fastq", two),
-            ],
+            &[("SRR000001_1.fastq", one), ("SRR000001_2.fastq", two)],
         );
         let executor = FastqFinalizationExecutor;
 
@@ -979,7 +976,10 @@ mod tests {
             .expect("finalize");
 
         assert_eq!(result.compressed_paths.len(), 2);
-        for (path, expected) in result.compressed_paths.iter().zip([one.as_slice(), two.as_slice()])
+        for (path, expected) in result
+            .compressed_paths
+            .iter()
+            .zip([one.as_slice(), two.as_slice()])
         {
             let mut decoder = GzDecoder::new(fs::File::open(path).expect("gzip"));
             let mut decoded = Vec::new();
@@ -1057,19 +1057,18 @@ mod tests {
         let executor = FastqFinalizationExecutor;
 
         let fastq_paths = decoded_fastq_paths(
-            &store.get_run(&run_id).expect("run").expect("exists").fastq_paths,
+            &store
+                .get_run(&run_id)
+                .expect("run")
+                .expect("exists")
+                .fastq_paths,
         )
         .expect("paths");
         let parent = validate_fastq_inputs(&fastq_paths).expect("parent");
         let compressed_dir = parent.join("compressed");
         fs::create_dir(&compressed_dir).expect("compressed dir");
         let compressed_path = compressed_dir.join("SRR000001.fastq.gz");
-        gzip_file(
-            &fastq_paths[0],
-            &compressed_path,
-            &StopToken::default(),
-        )
-        .expect("gzip");
+        gzip_file(&fastq_paths[0], &compressed_path, &StopToken::default()).expect("gzip");
         let bytes = metadata_len(&compressed_path, "compressed size").expect("size");
         store
             .record_finalized_artifacts(
@@ -1128,10 +1127,7 @@ mod tests {
         let root = temp_root("overwrite");
         let (mut store, run_id, _) =
             fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
-        let compressed = root
-            .join("fastq")
-            .join("SRR000001")
-            .join("compressed");
+        let compressed = root.join("fastq").join("SRR000001").join("compressed");
         fs::create_dir(&compressed).expect("preexisting");
         let executor = FastqFinalizationExecutor;
 
