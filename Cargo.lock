@@ -2349,14 +2349,14 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipeline-cli"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "pipeline-core",
 ]
 
 [[package]]
 name = "pipeline-core"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "csv",
  "flate2",
@@ -2371,7 +2371,7 @@ dependencies = [
 
 [[package]]
 name = "pipeline-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "pipeline-core",
  "rfd",

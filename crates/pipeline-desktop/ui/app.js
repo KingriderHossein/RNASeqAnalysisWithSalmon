@@ -1,4 +1,4 @@
-import { stateLabel, formatBytes, acceptRevision, progressText } from "./presentation.mjs";
+import { stateLabel, formatBytes, acceptRevision, progressText, controlStatus } from "./presentation.mjs";
 
 const $ = (id) => document.getElementById(id);
 const host = window.__TAURI__;
@@ -43,9 +43,7 @@ function render(next) {
   $("refresh").disabled = !actions.refresh;
   $("create-job").disabled = snapshot.active || busy;
   $("open-job").disabled = snapshot.active || busy;
-  $("control-status").textContent = snapshot.pending_control
-    ? `${snapshot.pending_control === "pause" ? "Pause" : "Cancel"} requested. Waiting for a safe stage boundary.`
-    : snapshot.active ? "A worker is running. Pause or Cancel and wait for its current stage before closing." : "Checkpoints saved. Completed runs will be skipped.";
+  $("control-status").textContent = controlStatus(snapshot);
   const message = snapshot.worker_error || job.error || snapshot.blocked_reason;
   if (message) showError([message, snapshot.blocked_reason].filter((value, index, array) => value && array.indexOf(value) === index).join("\n\n"));
   else clearError();
@@ -155,7 +153,7 @@ $("start").addEventListener("click", () => void action(async () => render(await 
 $("retry").addEventListener("click", () => void action(async () => render(await call("run_download_job", { mode: "retry" }))));
 $("pause").addEventListener("click", () => void action(async () => render(await call("request_download_control", { intent: "pause" }))));
 $("cancel").addEventListener("click", () => void action(async () => {
-  if (window.confirm("Cancel unfinished runs in this job? Completed files are kept. The current stage finishes before cancellation is applied.")) render(await call("request_download_control", { intent: "cancel" }));
+  if (window.confirm("Cancel unfinished runs in this job? Completed files are kept. Compression and checksum work stop at a safe buffer boundary; external tools finish their current stage.")) render(await call("request_download_control", { intent: "cancel" }));
 }));
 $("refresh").addEventListener("click", () => void action(async () => render(await call("open_download_job", { database: snapshot.database, id: snapshot.job.id }))));
 $("check-tools").addEventListener("click", () => void action(async () => {

@@ -1,4 +1,4 @@
-# Module A desktop — v0.1.5
+# Module A desktop — v0.1.6
 
 The Tauri 2 desktop is a thin HTML/CSS/JavaScript view over `pipeline-core`.
 It uses the same SQLite job file and stage coordinator as `rnaseq-pipeline`.
@@ -31,8 +31,9 @@ versions. A queued job can be inspected or cancelled without installed tools.
    warns but permits creation/start. Invalid/unwritable destinations report errors.
 3. Create the job, then Start. The database is `<workspace>/module-a.sqlite` and
    job outputs are `<workspace>/<job-name>/`. Existing destinations are not adopted.
-4. Pause/Cancel requests are acknowledged immediately and applied after the
-   current acquisition, conversion or finalization stage. Closing an active window
+4. Pause/Cancel requests are acknowledged immediately. Compression, gzip
+   verification and checksum streams stop at safe buffer boundaries; acquisition
+   and conversion finish their external stage. Closing an active window
    is blocked with a safe-stop instruction; it does not kill a tool.
 5. Resume a paused job, Retry recorded failures, or open the saved SQLite job file.
    Completed siblings are skipped and their outputs kept. The live window serves
@@ -59,6 +60,13 @@ the in-flight checkpoint and conversion staging/temp files. It does not reset
 the run to FAILED or enable Retry. Do not delete ownership files or edit states.
 Full process-tree supervision and automatic network classification/backoff are
 still parent #14 requirements. Zero automatic retries is the current policy.
+
+In-process finalization polls the same durable intent as the CLI. A control read
+failure stops safely, records a job error and leaves recoverable output. Published
+gzip recovery retains COMPRESSING when paused so the next Resume verifies/adopts
+the existing set. See [finalization control](MODULE-A-FINALIZATION-CONTROL.md).
+Bridge activity includes a machine-readable `stage` alongside its display label;
+control acknowledgement describes that stage without declaring the worker stopped.
 
 The current form accepts resolved run accessions. Study/project resolution,
 direct URLs, automatic size estimates and additional analysis modules are not

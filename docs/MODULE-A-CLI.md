@@ -1,4 +1,4 @@
-# Module A coordinator and CLI — v0.1.5
+# Module A coordinator and CLI — v0.1.6
 
 This is an engineering implementation for resolved SRR/ERR/DRR accessions. It
 does not authorize execution of the accepted raw cohort or any downstream
@@ -69,7 +69,9 @@ Resume clears the durable Pause request. Start leaves it in place. Cancel has
 priority and is irreversible for that job; neither Resume nor Retry clears it.
 Requests acknowledge intent, not completed stopping. A running external stage
 finishes before control is applied: acquisition includes prefetch and validation
-as one boundary, conversion is another, and finalization another. Outputs and
+as one boundary, and conversion is another. Rust compression, gzip verification
+and SHA-256 poll durable intent at each stream buffer and before publication.
+Cancel is applied after the stream stops; it cancels remaining runs. Outputs and
 attempt-specific logs are retained. Complete siblings never restart or lose
 their artifacts when another run fails, pauses, retries or cancels.
 For an idle queued job, invoke Start/Resume after Cancel to apply the durable
@@ -83,6 +85,14 @@ ownership; no PID guess, stale marker removal, state reset or second writer is
 used. Full process-tree supervision/reconciliation is required before enabling
 automatic recovery there. Pausing a hung tool may wait indefinitely at this
 version; this limitation is surfaced rather than declaring it stopped.
+
+Finalization control failures stop the stream and persist an actionable job
+error instead of treating an unreadable or missing control directory as Continue.
+A compression stop removes only its owned unpublished staging directory. A
+checksum stop retains the published gzip set. During adoption of a published
+compression set, a stop retains COMPRESSING so Resume verifies/adopts the set
+instead of attempting a conflicting new publication. See
+[finalization control](MODULE-A-FINALIZATION-CONTROL.md).
 
 Network policy is conservative and finite: **zero automatic retries**. An
 unclassified nonzero tool exit is FAILED with its recorded stage/error, not

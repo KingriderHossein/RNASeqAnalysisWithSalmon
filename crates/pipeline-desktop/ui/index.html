@@ -11,7 +11,7 @@
   <header class="app-header">
     <div class="brand-mark" aria-hidden="true">A</div>
     <div><h1>RNA-seq Download Manager</h1><p>Download, convert and verify sequencing reads.</p></div>
-    <span class="version">Module A · v0.1.5</span>
+    <span class="version">Module A · v0.1.6</span>
     <button id="open-job" class="secondary">Open saved job</button>
   </header>
   <div id="host-notice" class="notice" hidden>Open this interface in the desktop app to access local jobs. This browser view cannot start downloads.</div>
@@ -58,7 +58,7 @@
       <div id="empty-state" class="empty-state"><div class="empty-step">01</div><h3>Start with the run accessions</h3><p>Each run keeps its own checkpoint. Completed runs are skipped when you resume a saved job.</p><div class="stage-labels"><span>Acquire</span><span>Convert</span><span>Verify</span></div></div>
       <div id="run-list" hidden><div class="table-wrap"><table><caption class="sr-only">Run checkpoints and observed progress</caption><thead><tr><th scope="col">Run</th><th scope="col">Current task / last checkpoint</th><th scope="col">Observed bytes</th><th scope="col">Attempts</th><th scope="col">Details</th></tr></thead><tbody id="run-rows"></tbody></table></div></div>
       <details id="saved-details" hidden><summary>Saved job and output details</summary><pre id="saved-paths" class="details-text"></pre></details>
-      <p class="boundary-note">Pause and Cancel take effect after the current stage finishes. If an earlier tool may still be running after a crash, recovery stays blocked. Completed output files are kept.</p>
+      <p class="boundary-note">Pause and Cancel stop compression and checksum work at a safe buffer boundary. External tools finish their current stage. If an earlier tool may still be running after a crash, recovery stays blocked. Completed output files are kept.</p>
     </section>
   </main>
   <footer><span>Local files · No automatic retries for unclassified failures</span><span>Engineering preview · Scientific execution remains gated</span></footer>
