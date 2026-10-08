@@ -1,4 +1,5 @@
 pub mod acquisition;
+pub mod conversion;
 pub mod identity;
 pub mod input;
 pub mod persistence;
@@ -11,6 +12,10 @@ pub mod tool;
 pub use acquisition::{
     AcquisitionDisposition, AcquisitionError, AcquisitionResult, AcquisitionStage,
     SraAcquisitionExecutor,
+};
+pub use conversion::{
+    ConversionDisposition, ConversionError, ConversionRequest, ConversionResult,
+    FasterqConversionExecutor,
 };
 pub use identity::{ArtifactId, IdError, JobId, RunId};
 pub use input::{
