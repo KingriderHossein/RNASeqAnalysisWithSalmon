@@ -117,7 +117,8 @@ impl SraToolkitPlanner {
             return Err(SraPlanError::ZeroThreads);
         }
 
-        let accession_directory = checked_path(accession_directory.as_ref(), "accession directory")?;
+        let accession_directory =
+            checked_path(accession_directory.as_ref(), "accession directory")?;
         let output_directory = checked_path(output_directory.as_ref(), "FASTQ output directory")?;
         let temp_directory = checked_path(temp_directory.as_ref(), "temporary directory")?;
 
@@ -265,7 +266,10 @@ mod tests {
             )
             .expect("fasterq plan");
 
-        assert_eq!(plan.accession_directory, PathBuf::from("/data/sra/SRR4453783"));
+        assert_eq!(
+            plan.accession_directory,
+            PathBuf::from("/data/sra/SRR4453783")
+        );
         assert_eq!(
             args_as_strings(&plan.command),
             vec![
