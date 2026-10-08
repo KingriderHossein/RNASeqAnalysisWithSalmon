@@ -55,6 +55,7 @@ pub enum FinalizationError {
     InvalidFastqPath(PathBuf),
     MixedFastqParents,
     InvalidCompressedOutput(PathBuf),
+    RecoveryStopped,
     FinalCompressedDirectoryExists(PathBuf),
     ChecksumManifestExists(PathBuf),
     Io {
@@ -104,6 +105,7 @@ impl fmt::Display for FinalizationError {
                 "compressed FASTQ does not match source or is invalid: {}",
                 path.display()
             ),
+            Self::RecoveryStopped => f.write_str("compression recovery stopped before reconciliation"),
             Self::FinalCompressedDirectoryExists(path) => write!(
                 f,
                 "compressed output directory already exists and will not be overwritten: {}",
@@ -144,6 +146,7 @@ impl std::error::Error for FinalizationError {
             | Self::InvalidFastqPath(_)
             | Self::MixedFastqParents
             | Self::InvalidCompressedOutput(_)
+            | Self::RecoveryStopped
             | Self::FinalCompressedDirectoryExists(_)
             | Self::ChecksumManifestExists(_)
             | Self::SizeOverflow { .. } => None,
@@ -182,6 +185,8 @@ impl FastqFinalizationExecutor {
 
         match current.state {
             RunState::FastqReady => self.run_compression(store, current, stop, false),
+            RunState::Compressing => self.recover_compression(store, current, stop),
+            RunState::Checksumming => self.run_checksum_resume(store, current, stop, false),
             RunState::PausedAtBoundary => match current.last_checkpoint.as_deref() {
                 Some(COMPRESSION_CHECKPOINT) => self.run_compression(store, current, stop, false),
                 Some(CHECKSUM_CHECKPOINT) => self.run_checksum_resume(store, current, stop, false),
@@ -356,6 +361,120 @@ impl FastqFinalizationExecutor {
         )
     }
 
+    fn recover_compression(
+        &self,
+        store: &mut StateStore,
+        current: RunRecord,
+        stop: &StopToken,
+    ) -> Result<FinalizationResult, FinalizationError> {
+        let fastq_paths = decoded_fastq_paths(&current.fastq_paths)?;
+        let parent = validate_fastq_inputs(&fastq_paths)?;
+        let compressed_directory = parent.join("compressed");
+
+        if !compressed_directory.exists() {
+            // Do not delete an unproven staging directory after a process crash.
+            // The new attempt has a different persisted identity and filename.
+            let paused = store.transition_run(
+                &current.id,
+                RunState::PausedAtBoundary,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )?;
+            return self.run_compression(store, paused, stop, false);
+        }
+
+        let metadata = fs::symlink_metadata(&compressed_directory).map_err(|source| {
+            FinalizationError::Io {
+                operation: "inspect compressed recovery directory",
+                path: compressed_directory.clone(),
+                source,
+            }
+        })?;
+        if !metadata.file_type().is_dir() {
+            return Err(FinalizationError::InvalidCompressedOutput(compressed_directory));
+        }
+
+        // An atomic directory rename may complete before SQLite persistence.
+        // Adopt only exact expected regular files and source-equivalent gzip streams.
+        let mut finalized = Vec::with_capacity(fastq_paths.len());
+        let mut compressed_paths = Vec::with_capacity(fastq_paths.len());
+        for (index, source) in fastq_paths.iter().enumerate() {
+            let mut target_name = source
+                .file_name()
+                .ok_or_else(|| FinalizationError::InvalidFastqPath(source.clone()))?
+                .to_os_string();
+            target_name.push(".gz");
+            let target = compressed_directory.join(target_name);
+            let target_metadata = fs::symlink_metadata(&target).map_err(|_| {
+                FinalizationError::InvalidCompressedOutput(target.clone())
+            })?;
+            if !target_metadata.file_type().is_file() || target_metadata.len() == 0 {
+                return Err(FinalizationError::InvalidCompressedOutput(target));
+            }
+            match verify_gzip_pair(source, &target, stop)? {
+                StreamOutcome::Stopped => return Err(FinalizationError::RecoveryStopped),
+                StreamOutcome::Complete => {}
+            }
+            let size_bytes = i64::try_from(target_metadata.len()).map_err(|_| {
+                FinalizationError::SizeOverflow {
+                    path: target.clone(),
+                    bytes: target_metadata.len(),
+                }
+            })?;
+            finalized.push((
+                ArtifactId::new(format!("{}-gzip-{}", current.id.as_str(), index + 1))?,
+                target.to_string_lossy().into_owned(),
+                size_bytes,
+            ));
+            compressed_paths.push(target);
+        }
+
+        let entries = fs::read_dir(&compressed_directory).map_err(|source| {
+            FinalizationError::Io {
+                operation: "list recovered gzip directory",
+                path: compressed_directory.clone(),
+                source,
+            }
+        })?;
+        if entries.count() != compressed_paths.len() {
+            return Err(FinalizationError::InvalidCompressedOutput(compressed_directory));
+        }
+
+        let existing = store.list_artifacts_by_kind(&current.id, ArtifactKind::CompressedFastq)?;
+        if existing.is_empty() {
+            store.record_finalized_artifacts(
+                &current.id,
+                ArtifactKind::CompressedFastq,
+                &finalized,
+            )?;
+        } else if existing.len() != finalized.len()
+            || !existing.iter().all(|artifact| {
+                finalized.iter().any(|(id, path, size)| {
+                    &artifact.id == id
+                        && &artifact.path == path
+                        && artifact.size_bytes == Some(*size)
+                })
+            })
+        {
+            return Err(FinalizationError::InvalidCompressedOutput(compressed_directory));
+        }
+
+        store.transition_run(
+            &current.id,
+            RunState::Checksumming,
+            Some(CHECKSUM_CHECKPOINT),
+            None,
+        )?;
+        self.run_checksums(
+            store,
+            &current.id,
+            current.attempt_count,
+            compressed_paths,
+            &compressed_directory,
+            stop,
+        )
+    }
+
     fn run_checksum_resume(
         &self,
         store: &mut StateStore,
@@ -374,7 +493,7 @@ impl FastqFinalizationExecutor {
                 RunState::Checksumming,
                 Some(CHECKSUM_CHECKPOINT),
             )?;
-        } else {
+        } else if current.state != RunState::Checksumming {
             store.transition_run(
                 &current.id,
                 RunState::Checksumming,
@@ -1211,6 +1330,112 @@ mod tests {
             fs::read(&source).expect("source preserved"),
             b"@r\nCCCC\n+\nIIII\n"
         );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn recovery_restarts_abandoned_compression_without_deleting_partials() {
+        let root = temp_root("compression-crash-staging");
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
+        let old_attempt = store.begin_run_attempt(&run_id).expect("old attempt");
+        store
+            .transition_run(
+                &run_id,
+                RunState::Compressing,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )
+            .expect("compressing");
+        let old_staging = root
+            .join("fastq")
+            .join("SRR000001")
+            .join(format!(".compressed-attempt-{old_attempt}"));
+        fs::create_dir(&old_staging).expect("old staging");
+        fs::write(old_staging.join("keep.txt"), b"preserve-unproven-partial")
+            .expect("old data");
+
+        let result = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .expect("resume");
+        assert_eq!(result.run.state, RunState::Complete);
+        assert_eq!(result.attempt, Some(old_attempt + 1));
+        assert_eq!(
+            fs::read(old_staging.join("keep.txt")).expect("untouched"),
+            b"preserve-unproven-partial"
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn recovery_adopts_valid_gzip_renamed_before_sqlite_commit() {
+        let root = temp_root("compression-crash-renamed");
+        let source_bytes = b"@r\nACGT\n+\nIIII\n";
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", source_bytes)]);
+        let source = root.join("fastq").join("SRR000001").join("SRR000001.fastq");
+        let compressed_dir = source.parent().expect("parent").join("compressed");
+        fs::create_dir(&compressed_dir).expect("final dir");
+        gzip_file(
+            &source,
+            &compressed_dir.join("SRR000001.fastq.gz"),
+            &StopToken::default(),
+        )
+        .expect("gzip");
+        store.begin_run_attempt(&run_id).expect("attempt");
+        store
+            .transition_run(
+                &run_id,
+                RunState::Compressing,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )
+            .expect("compressing");
+
+        let result = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .expect("recovered");
+        assert_eq!(result.run.state, RunState::Complete);
+        assert_eq!(result.attempt, Some(1));
+        assert_eq!(
+            store
+                .list_artifacts_by_kind(&run_id, ArtifactKind::CompressedFastq)
+                .expect("compressed artifacts")
+                .len(),
+            1
+        );
+        assert_eq!(fs::read(&source).expect("source"), source_bytes);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn recovery_rejects_corrupt_gzip_without_deleting_anything() {
+        let root = temp_root("compression-corruption");
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
+        let dir = root.join("fastq").join("SRR000001");
+        fs::create_dir(dir.join("compressed")).expect("final dir");
+        let invalid = dir.join("compressed").join("SRR000001.fastq.gz");
+        fs::write(&invalid, b"not-a-gzip-stream").expect("bad gzip");
+        store.begin_run_attempt(&run_id).expect("attempt");
+        store
+            .transition_run(
+                &run_id,
+                RunState::Compressing,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )
+            .expect("compressing");
+
+        assert!(FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .is_err());
+        assert_eq!(
+            store.get_run(&run_id).expect("run").expect("exists").state,
+            RunState::Compressing
+        );
+        assert!(invalid.exists());
+        assert!(dir.join("SRR000001.fastq").exists());
         fs::remove_dir_all(root).expect("cleanup");
     }
 
