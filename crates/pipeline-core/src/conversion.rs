@@ -989,7 +989,87 @@ mod tests {
     }
 
     #[test]
-    fn empty_or_missing_fastq_output_never_reaches_fastq_ready() {
+    fn missing_fastq_output_never_reaches_fastq_ready() {
+        let root = temp_root("missing");
+        let (mut store, run_id, _) = sra_valid_store(&root);
+        let runner = FakeRunner::new(vec![step("success-missing", true, false, Vec::new())]);
+        let planner = SraToolkitPlanner::new(registry());
+        let executor = FasterqConversionExecutor::new(&planner, &runner);
+
+        let result = executor
+            .execute_to_fastq_ready(
+                &mut store,
+                &run_id,
+                &request(&root, 2),
+                &StopToken::default(),
+            )
+            .expect("missing output is explicit failed outcome");
+
+        assert_eq!(result.run.state, RunState::Failed);
+        assert!(matches!(
+            result.disposition,
+            ConversionDisposition::Failed { .. }
+        ));
+        assert!(!root.join("fastq").join("SRR000001").exists());
+
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn paused_conversion_resumes_from_validated_sra_with_new_attempt() {
+        let root = temp_root("pause-resume");
+        let (mut store, run_id, sra_path) = sra_valid_store(&root);
+        let runner = FakeRunner::new(vec![
+            step(
+                "stopped",
+                false,
+                true,
+                vec![("SRR000001.fastq", b"partial")],
+            ),
+            step(
+                "success",
+                true,
+                false,
+                vec![("SRR000001.fastq", b"@r\nAC\n+\nII\n")],
+            ),
+        ]);
+        let planner = SraToolkitPlanner::new(registry());
+        let executor = FasterqConversionExecutor::new(&planner, &runner);
+
+        let first = executor
+            .execute_to_fastq_ready(
+                &mut store,
+                &run_id,
+                &request(&root, 2),
+                &StopToken::default(),
+            )
+            .expect("pause");
+        assert_eq!(first.run.state, RunState::PausedAtBoundary);
+        assert_eq!(first.attempt, Some(1));
+
+        let second = executor
+            .execute_to_fastq_ready(
+                &mut store,
+                &run_id,
+                &request(&root, 2),
+                &StopToken::default(),
+            )
+            .expect("resume");
+        assert_eq!(second.run.state, RunState::FastqReady);
+        assert_eq!(second.attempt, Some(2));
+        assert!(sra_path.is_dir());
+
+        let seen = runner.seen();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].0.args[0], sra_path.as_os_str());
+        assert_eq!(seen[1].0.args[0], sra_path.as_os_str());
+        assert_ne!(option_path(&seen[0].0, "-O"), option_path(&seen[1].0, "-O"));
+
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn empty_fastq_output_never_reaches_fastq_ready() {
         let root = temp_root("empty");
         let (mut store, run_id, _) = sra_valid_store(&root);
         let runner = FakeRunner::new(vec![step(
