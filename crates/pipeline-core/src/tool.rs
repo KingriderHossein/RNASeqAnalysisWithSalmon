@@ -12,11 +12,7 @@ pub enum ToolKind {
 }
 
 impl ToolKind {
-    pub const SRA_REQUIRED: [Self; 3] = [
-        Self::Prefetch,
-        Self::VdbValidate,
-        Self::FasterqDump,
-    ];
+    pub const SRA_REQUIRED: [Self; 3] = [Self::Prefetch, Self::VdbValidate, Self::FasterqDump];
 
     pub fn binary_name(self) -> &'static str {
         match self {
@@ -137,10 +133,8 @@ impl std::error::Error for ToolError {
 }
 
 pub fn discover_tool(kind: ToolKind) -> Result<ToolInfo, ToolError> {
-    let path = which::which(kind.binary_name()).map_err(|source| ToolError::Missing {
-        kind,
-        source,
-    })?;
+    let path =
+        which::which(kind.binary_name()).map_err(|source| ToolError::Missing { kind, source })?;
     let version_output = probe_version(kind, &path)?;
     Ok(ToolInfo {
         kind,
@@ -209,6 +203,8 @@ mod tests {
             kind: ToolKind::Prefetch,
             source: error,
         };
-        assert!(wrapped.to_string().contains("required tool not found on PATH"));
+        assert!(wrapped
+            .to_string()
+            .contains("required tool not found on PATH"));
     }
 }
