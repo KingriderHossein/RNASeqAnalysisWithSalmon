@@ -249,15 +249,12 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
             return Err(error);
         }
 
-        let plan = match self
-            .planner
-            .fasterq(
-                    sra_path,
-                    &staging_directory,
-                    &temp_directory,
-                    request.threads,
-                )
-        {
+        let plan = match self.planner.fasterq(
+            sra_path,
+            &staging_directory,
+            &temp_directory,
+            request.threads,
+        ) {
             Ok(plan) => plan,
             Err(error) => {
                 let conversion_error = ConversionError::Plan(error);
@@ -765,13 +762,23 @@ mod tests {
             .update_run_download_snapshot(&run_id, 15, sra_path.to_string_lossy().as_ref())
             .expect("SRA snapshot");
         store
-            .transition_run(&run_id, RunState::Downloaded, Some("prefetch-complete"), None)
+            .transition_run(
+                &run_id,
+                RunState::Downloaded,
+                Some("prefetch-complete"),
+                None,
+            )
             .expect("downloaded");
         store
             .transition_run(&run_id, RunState::Validating, Some("vdb-validate"), None)
             .expect("validating");
         store
-            .transition_run(&run_id, RunState::SraValid, Some("vdb-validate-complete"), None)
+            .transition_run(
+                &run_id,
+                RunState::SraValid,
+                Some("vdb-validate-complete"),
+                None,
+            )
             .expect("SRA valid");
 
         (store, run_id, sra_path)
@@ -968,7 +975,14 @@ mod tests {
             .expect_err("must refuse overwrite");
 
         assert!(matches!(error, ConversionError::FinalOutputExists(path) if path == final_dir));
-        assert_eq!(store.get_run(&run_id).expect("run").expect("exists").attempt_count, 0);
+        assert_eq!(
+            store
+                .get_run(&run_id)
+                .expect("run")
+                .expect("exists")
+                .attempt_count,
+            0
+        );
         assert!(runner.seen().is_empty());
 
         fs::remove_dir_all(root).expect("cleanup");
