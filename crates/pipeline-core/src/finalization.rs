@@ -105,7 +105,9 @@ impl fmt::Display for FinalizationError {
                 "compressed FASTQ does not match source or is invalid: {}",
                 path.display()
             ),
-            Self::RecoveryStopped => f.write_str("compression recovery stopped before reconciliation"),
+            Self::RecoveryStopped => {
+                f.write_str("compression recovery stopped before reconciliation")
+            }
             Self::FinalCompressedDirectoryExists(path) => write!(
                 f,
                 "compressed output directory already exists and will not be overwritten: {}",
@@ -391,7 +393,9 @@ impl FastqFinalizationExecutor {
             }
         })?;
         if !metadata.file_type().is_dir() {
-            return Err(FinalizationError::InvalidCompressedOutput(compressed_directory));
+            return Err(FinalizationError::InvalidCompressedOutput(
+                compressed_directory,
+            ));
         }
 
         // An atomic directory rename may complete before SQLite persistence.
@@ -405,9 +409,8 @@ impl FastqFinalizationExecutor {
                 .to_os_string();
             target_name.push(".gz");
             let target = compressed_directory.join(target_name);
-            let target_metadata = fs::symlink_metadata(&target).map_err(|_| {
-                FinalizationError::InvalidCompressedOutput(target.clone())
-            })?;
+            let target_metadata = fs::symlink_metadata(&target)
+                .map_err(|_| FinalizationError::InvalidCompressedOutput(target.clone()))?;
             if !target_metadata.file_type().is_file() || target_metadata.len() == 0 {
                 return Err(FinalizationError::InvalidCompressedOutput(target));
             }
@@ -429,15 +432,16 @@ impl FastqFinalizationExecutor {
             compressed_paths.push(target);
         }
 
-        let entries = fs::read_dir(&compressed_directory).map_err(|source| {
-            FinalizationError::Io {
+        let entries =
+            fs::read_dir(&compressed_directory).map_err(|source| FinalizationError::Io {
                 operation: "list recovered gzip directory",
                 path: compressed_directory.clone(),
                 source,
-            }
-        })?;
+            })?;
         if entries.count() != compressed_paths.len() {
-            return Err(FinalizationError::InvalidCompressedOutput(compressed_directory));
+            return Err(FinalizationError::InvalidCompressedOutput(
+                compressed_directory,
+            ));
         }
 
         let existing = store.list_artifacts_by_kind(&current.id, ArtifactKind::CompressedFastq)?;
@@ -456,7 +460,9 @@ impl FastqFinalizationExecutor {
                 })
             })
         {
-            return Err(FinalizationError::InvalidCompressedOutput(compressed_directory));
+            return Err(FinalizationError::InvalidCompressedOutput(
+                compressed_directory,
+            ));
         }
 
         store.transition_run(
@@ -530,7 +536,8 @@ impl FastqFinalizationExecutor {
             stop,
         );
         if let Err(error) = &result {
-            if matches!(store.get_run(run_id), Ok(Some(run)) if run.state == RunState::Checksumming) {
+            if matches!(store.get_run(run_id), Ok(Some(run)) if run.state == RunState::Checksumming)
+            {
                 let _ = self.persist_failure(store, run_id, CHECKSUM_CHECKPOINT, error);
             }
         }
@@ -878,34 +885,41 @@ fn verify_gzip_pair(
         if stop.is_stop_requested() {
             return Ok(StreamOutcome::Stopped);
         }
-        let count = original.read(&mut original_buffer).map_err(|source_error| {
-            FinalizationError::Io {
+        let count = original
+            .read(&mut original_buffer)
+            .map_err(|source_error| FinalizationError::Io {
                 operation: "read source FASTQ for gzip verification",
                 path: source.to_path_buf(),
                 source: source_error,
-            }
-        })?;
+            })?;
         if count == 0 {
             let mut excess = [0_u8; 1];
-            let extra = decoded.read(&mut excess).map_err(|source_error| FinalizationError::Io {
-                operation: "finish gzip verification",
-                path: compressed.to_path_buf(),
-                source: source_error,
-            })?;
+            let extra =
+                decoded
+                    .read(&mut excess)
+                    .map_err(|source_error| FinalizationError::Io {
+                        operation: "finish gzip verification",
+                        path: compressed.to_path_buf(),
+                        source: source_error,
+                    })?;
             if extra != 0 {
-                return Err(FinalizationError::InvalidCompressedOutput(compressed.to_path_buf()));
+                return Err(FinalizationError::InvalidCompressedOutput(
+                    compressed.to_path_buf(),
+                ));
             }
             return Ok(StreamOutcome::Complete);
         }
-        decoded.read_exact(&mut decoded_buffer[..count]).map_err(|source_error| {
-            FinalizationError::Io {
+        decoded
+            .read_exact(&mut decoded_buffer[..count])
+            .map_err(|source_error| FinalizationError::Io {
                 operation: "decode gzip for verification",
                 path: compressed.to_path_buf(),
                 source: source_error,
-            }
-        })?;
+            })?;
         if original_buffer[..count] != decoded_buffer[..count] {
-            return Err(FinalizationError::InvalidCompressedOutput(compressed.to_path_buf()));
+            return Err(FinalizationError::InvalidCompressedOutput(
+                compressed.to_path_buf(),
+            ));
         }
     }
 }
@@ -1382,8 +1396,7 @@ mod tests {
         fs::write(&source, b"@r\nAAAA\n+\nIIII\n").expect("source");
         gzip_file(&source, &compressed, &StopToken::default()).expect("gzip");
         assert_eq!(
-            verify_gzip_pair(&source, &compressed, &StopToken::default())
-                .expect("verify"),
+            verify_gzip_pair(&source, &compressed, &StopToken::default()).expect("verify"),
             StreamOutcome::Complete
         );
 
@@ -1421,8 +1434,7 @@ mod tests {
             .join("SRR000001")
             .join(format!(".compressed-attempt-{old_attempt}"));
         fs::create_dir(&old_staging).expect("old staging");
-        fs::write(old_staging.join("keep.txt"), b"preserve-unproven-partial")
-            .expect("old data");
+        fs::write(old_staging.join("keep.txt"), b"preserve-unproven-partial").expect("old data");
 
         let result = FastqFinalizationExecutor
             .execute_to_complete(&mut store, &run_id, &StopToken::default())
@@ -1440,8 +1452,7 @@ mod tests {
     fn recovery_adopts_valid_gzip_renamed_before_sqlite_commit() {
         let root = temp_root("compression-crash-renamed");
         let source_bytes = b"@r\nACGT\n+\nIIII\n";
-        let (mut store, run_id, _) =
-            fastq_ready_store(&root, &[("SRR000001.fastq", source_bytes)]);
+        let (mut store, run_id, _) = fastq_ready_store(&root, &[("SRR000001.fastq", source_bytes)]);
         let source = root.join("fastq").join("SRR000001").join("SRR000001.fastq");
         let compressed_dir = source.parent().expect("parent").join("compressed");
         fs::create_dir(&compressed_dir).expect("final dir");
@@ -1593,10 +1604,20 @@ mod tests {
             )
             .expect("artifact");
         store
-            .transition_run(&run_id, RunState::Compressing, Some(COMPRESSION_CHECKPOINT), None)
+            .transition_run(
+                &run_id,
+                RunState::Compressing,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )
             .expect("compressing");
         store
-            .transition_run(&run_id, RunState::Checksumming, Some(CHECKSUM_CHECKPOINT), None)
+            .transition_run(
+                &run_id,
+                RunState::Checksumming,
+                Some(CHECKSUM_CHECKPOINT),
+                None,
+            )
             .expect("checksumming");
         let manifest = compressed_dir.join("SHA256SUMS");
         fs::write(&manifest, b"invalid checksum\n").expect("manifest");
@@ -1608,7 +1629,10 @@ mod tests {
             store.get_run(&run_id).expect("run").expect("exists").state,
             RunState::Failed
         );
-        assert_eq!(fs::read(&manifest).expect("manifest"), b"invalid checksum\n");
+        assert_eq!(
+            fs::read(&manifest).expect("manifest"),
+            b"invalid checksum\n"
+        );
         assert!(source.exists());
         fs::remove_dir_all(root).expect("cleanup");
     }
