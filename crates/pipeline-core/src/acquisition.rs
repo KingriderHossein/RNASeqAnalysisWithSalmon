@@ -209,11 +209,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                 Some(PREFETCH_CHECKPOINT) => {
                     let plan = self.planner.prefetch(&accession, output_root.as_ref())?;
                     let attempt = store.begin_run_attempt(run_id)?;
-                    store.retry_run(
-                        run_id,
-                        RunState::Downloading,
-                        Some(PREFETCH_CHECKPOINT),
-                    )?;
+                    store.retry_run(run_id, RunState::Downloading, Some(PREFETCH_CHECKPOINT))?;
                     self.run_prefetch_then_validate(
                         store,
                         run_id,
@@ -226,11 +222,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                 }
                 Some(VALIDATION_CHECKPOINT) => {
                     let attempt = store.begin_run_attempt(run_id)?;
-                    store.retry_run(
-                        run_id,
-                        RunState::Validating,
-                        Some(VALIDATION_CHECKPOINT),
-                    )?;
+                    store.retry_run(run_id, RunState::Validating, Some(VALIDATION_CHECKPOINT))?;
                     self.run_validation(store, run_id, attempt, log_root.as_ref(), stop, None)
                 }
                 other => Err(AcquisitionError::UnknownFailedCheckpoint(
@@ -352,14 +344,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             None,
         )?;
 
-        self.run_validation(
-            store,
-            run_id,
-            attempt,
-            log_root,
-            stop,
-            Some(outcome),
-        )
+        self.run_validation(store, run_id, attempt, log_root, stop, Some(outcome))
     }
 
     fn run_validation(
@@ -389,8 +374,7 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         let sra_path = match current.sra_path.as_deref() {
             Some(path) => path,
             None => {
-                let reason =
-                    "downloaded run is missing its persisted SRA accession-directory path";
+                let reason = "downloaded run is missing its persisted SRA accession-directory path";
                 store.transition_run(
                     run_id,
                     RunState::Failed,
@@ -526,23 +510,17 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         source: &ProcessError,
     ) -> Result<(), AcquisitionError> {
         let reason = format!("{stage} process execution failed: {source}");
-        store.transition_run(
-            run_id,
-            RunState::Failed,
-            Some(checkpoint),
-            Some(&reason),
-        )?;
+        store.transition_run(run_id, RunState::Failed, Some(checkpoint), Some(&reason))?;
         Ok(())
     }
 }
 
 fn directory_size(path: &Path) -> Result<u64, AcquisitionError> {
-    let metadata = fs::symlink_metadata(path).map_err(|source| {
-        AcquisitionError::InspectDownloadedData {
+    let metadata =
+        fs::symlink_metadata(path).map_err(|source| AcquisitionError::InspectDownloadedData {
             path: path.to_path_buf(),
             source,
-        }
-    })?;
+        })?;
 
     if metadata.file_type().is_symlink() {
         return Ok(0);
@@ -555,11 +533,10 @@ fn directory_size(path: &Path) -> Result<u64, AcquisitionError> {
     }
 
     let mut total = 0_u64;
-    let entries =
-        fs::read_dir(path).map_err(|source| AcquisitionError::InspectDownloadedData {
-            path: path.to_path_buf(),
-            source,
-        })?;
+    let entries = fs::read_dir(path).map_err(|source| AcquisitionError::InspectDownloadedData {
+        path: path.to_path_buf(),
+        source,
+    })?;
     for entry in entries {
         let entry = entry.map_err(|source| AcquisitionError::InspectDownloadedData {
             path: path.to_path_buf(),
@@ -573,9 +550,7 @@ fn directory_size(path: &Path) -> Result<u64, AcquisitionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        CommandSpec, JobId, NewJob, NewRun, ToolInfo, ToolKind, ToolRegistry,
-    };
+    use crate::{CommandSpec, JobId, NewJob, NewRun, ToolInfo, ToolKind, ToolRegistry};
     use std::{
         collections::VecDeque,
         ffi::OsString,
@@ -732,14 +707,8 @@ mod tests {
         assert_eq!(seen.len(), 2);
         assert_eq!(seen[0].0.program, PathBuf::from("/tools/prefetch"));
         assert_eq!(seen[1].0.program, PathBuf::from("/tools/vdb-validate"));
-        assert_eq!(
-            seen[0].1.log_prefix,
-            "SRR000001-attempt-1-prefetch"
-        );
-        assert_eq!(
-            seen[1].1.log_prefix,
-            "SRR000001-attempt-1-vdb-validate"
-        );
+        assert_eq!(seen[0].1.log_prefix, "SRR000001-attempt-1-prefetch");
+        assert_eq!(seen[1].1.log_prefix, "SRR000001-attempt-1-vdb-validate");
 
         fs::remove_dir_all(root).expect("cleanup");
     }
@@ -824,14 +793,8 @@ mod tests {
         let seen = runner.seen();
         assert_eq!(seen.len(), 3);
         assert_eq!(seen[0].0, seen[1].0);
-        assert_eq!(
-            seen[0].1.log_prefix,
-            "SRR000001-attempt-1-prefetch"
-        );
-        assert_eq!(
-            seen[1].1.log_prefix,
-            "SRR000001-attempt-2-prefetch"
-        );
+        assert_eq!(seen[0].1.log_prefix, "SRR000001-attempt-1-prefetch");
+        assert_eq!(seen[1].1.log_prefix, "SRR000001-attempt-2-prefetch");
 
         fs::remove_dir_all(root).expect("cleanup");
     }
