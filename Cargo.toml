@@ -2,5 +2,7 @@
 members = [
     "crates/pipeline-core",
     "crates/pipeline-cli",
+    "crates/pipeline-desktop",
 ]
 resolver = "2"
+

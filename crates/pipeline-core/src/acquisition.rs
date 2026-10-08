@@ -565,6 +565,11 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         checkpoint: &'static str,
         source: &ProcessError,
     ) -> Result<(), AcquisitionError> {
+        if source.may_have_live_child() {
+            // Retain the in-flight checkpoint. FAILED would enable an unsafe
+            // second writer even though the previous child's lifetime is unknown.
+            return Ok(());
+        }
         let reason = format!("{stage} process execution failed: {source}");
         store.transition_run(run_id, RunState::Failed, Some(checkpoint), Some(&reason))?;
         Ok(())
