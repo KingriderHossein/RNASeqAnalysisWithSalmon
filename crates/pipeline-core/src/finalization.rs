@@ -521,11 +521,32 @@ impl FastqFinalizationExecutor {
         compressed_directory: &Path,
         stop: &StopToken,
     ) -> Result<FinalizationResult, FinalizationError> {
-        let manifest_path = compressed_directory.join("SHA256SUMS");
-        if manifest_path.exists() {
-            return Err(FinalizationError::ChecksumManifestExists(manifest_path));
+        let result = self.run_checksums_inner(
+            store,
+            run_id,
+            attempt,
+            compressed_paths,
+            compressed_directory,
+            stop,
+        );
+        if let Err(error) = &result {
+            if matches!(store.get_run(run_id), Ok(Some(run)) if run.state == RunState::Checksumming) {
+                let _ = self.persist_failure(store, run_id, CHECKSUM_CHECKPOINT, error);
+            }
         }
+        result
+    }
 
+    fn run_checksums_inner(
+        &self,
+        store: &mut StateStore,
+        run_id: &RunId,
+        attempt: i64,
+        compressed_paths: Vec<PathBuf>,
+        compressed_directory: &Path,
+        stop: &StopToken,
+    ) -> Result<FinalizationResult, FinalizationError> {
+        let manifest_path = compressed_directory.join("SHA256SUMS");
         let artifacts = store.list_artifacts_by_kind(run_id, ArtifactKind::CompressedFastq)?;
         if artifacts.len() != compressed_paths.len() || artifacts.is_empty() {
             return Err(FinalizationError::MissingFastqPaths);
@@ -536,6 +557,14 @@ impl FastqFinalizationExecutor {
 
         for artifact in &artifacts {
             let path = PathBuf::from(&artifact.path);
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|_| FinalizationError::InvalidCompressedOutput(path.clone()))?;
+            if !metadata.file_type().is_file()
+                || metadata.len() == 0
+                || artifact.size_bytes != i64::try_from(metadata.len()).ok()
+            {
+                return Err(FinalizationError::InvalidCompressedOutput(path));
+            }
             match sha256_file(&path, stop)? {
                 HashOutcome::Stopped => {
                     let run = store.transition_run(
@@ -568,17 +597,41 @@ impl FastqFinalizationExecutor {
             }
         }
 
-        let temp_manifest = compressed_directory.join(format!("SHA256SUMS.tmp-attempt-{attempt}"));
-        write_atomic_candidate(&temp_manifest, lines.as_bytes())?;
-        if let Err(source) = fs::rename(&temp_manifest, &manifest_path) {
-            let _ = fs::remove_file(&temp_manifest);
-            let error = FinalizationError::Io {
-                operation: "finalize checksum manifest",
+        // Recovery: the checksum file may have been renamed before SQLite was committed.
+        // Never replace it. Accept only exact bytes recomputed from current gzip inputs.
+        let manifest_preexisted = match fs::symlink_metadata(&manifest_path) {
+            Ok(metadata) if metadata.file_type().is_file() => true,
+            Ok(_) => return Err(FinalizationError::InvalidCompressedOutput(manifest_path)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(source) => {
+                return Err(FinalizationError::Io {
+                    operation: "inspect checksum manifest",
+                    path: manifest_path,
+                    source,
+                });
+            }
+        };
+        if manifest_preexisted {
+            let bytes = fs::read(&manifest_path).map_err(|source| FinalizationError::Io {
+                operation: "read existing checksum manifest",
                 path: manifest_path.clone(),
                 source,
-            };
-            self.persist_failure(store, run_id, CHECKSUM_CHECKPOINT, &error)?;
-            return Err(error);
+            })?;
+            if bytes != lines.as_bytes() {
+                return Err(FinalizationError::InvalidCompressedOutput(manifest_path));
+            }
+        } else {
+            let temp_manifest =
+                compressed_directory.join(format!("SHA256SUMS.tmp-attempt-{attempt}"));
+            write_atomic_candidate(&temp_manifest, lines.as_bytes())?;
+            if let Err(source) = fs::rename(&temp_manifest, &manifest_path) {
+                let _ = fs::remove_file(&temp_manifest);
+                return Err(FinalizationError::Io {
+                    operation: "finalize checksum manifest",
+                    path: manifest_path,
+                    source,
+                });
+            }
         }
 
         let manifest_bytes = metadata_len(&manifest_path, "inspect checksum manifest")?;
@@ -590,24 +643,40 @@ impl FastqFinalizationExecutor {
         let manifest_hash = sha256_bytes(lines.as_bytes());
         let checksum_id = ArtifactId::new(format!("{}-sha256sums", run_id.as_str()))?;
 
-        if let Err(error) = store.record_checksum_results(
-            &compressed_hashes,
-            &(
-                checksum_id,
-                run_id.clone(),
-                manifest_path.to_string_lossy().into_owned(),
-                manifest_size,
-                manifest_hash,
-            ),
-        ) {
-            let _ = fs::remove_file(&manifest_path);
-            let _ = store.transition_run(
-                run_id,
-                RunState::Failed,
-                Some(CHECKSUM_CHECKPOINT),
-                Some(&error.to_string()),
-            );
-            return Err(FinalizationError::Store(error));
+        let existing_checksum = store.list_artifacts_by_kind(run_id, ArtifactKind::Checksum)?;
+        if existing_checksum.is_empty() {
+            if let Err(error) = store.record_checksum_results(
+                &compressed_hashes,
+                &(
+                    checksum_id,
+                    run_id.clone(),
+                    manifest_path.to_string_lossy().into_owned(),
+                    manifest_size,
+                    manifest_hash,
+                ),
+            ) {
+                if !manifest_preexisted {
+                    let _ = fs::remove_file(&manifest_path);
+                }
+                return Err(FinalizationError::Store(error));
+            }
+        } else {
+            // A crash may have occurred after the SQLite transaction but before COMPLETE.
+            let valid_checksum = existing_checksum.len() == 1
+                && existing_checksum[0].path == manifest_path.to_string_lossy()
+                && existing_checksum[0].size_bytes == Some(manifest_size)
+                && existing_checksum[0].sha256.as_deref() == Some(manifest_hash.as_str())
+                && existing_checksum[0].validation_state == crate::ArtifactValidationState::Valid;
+            let valid_hashes = compressed_hashes.iter().all(|(id, hash)| {
+                artifacts.iter().any(|artifact| {
+                    &artifact.id == id
+                        && artifact.sha256.as_deref() == Some(hash.as_str())
+                        && artifact.validation_state == crate::ArtifactValidationState::Valid
+                })
+            });
+            if !valid_checksum || !valid_hashes {
+                return Err(FinalizationError::InvalidCompressedOutput(manifest_path));
+            }
         }
 
         let run =
@@ -1436,6 +1505,111 @@ mod tests {
         );
         assert!(invalid.exists());
         assert!(dir.join("SRR000001.fastq").exists());
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn recovery_adopts_manifest_renamed_before_sqlite_commit() {
+        let root = temp_root("checksum-crash-renamed");
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nGT\n+\nII\n")]);
+        let source = root.join("fastq").join("SRR000001").join("SRR000001.fastq");
+        let compressed_dir = source.parent().expect("parent").join("compressed");
+        fs::create_dir(&compressed_dir).expect("compressed");
+        let compressed = compressed_dir.join("SRR000001.fastq.gz");
+        gzip_file(&source, &compressed, &StopToken::default()).expect("gzip");
+        let bytes = metadata_len(&compressed, "compressed bytes").expect("size");
+        store
+            .record_finalized_artifacts(
+                &run_id,
+                ArtifactKind::CompressedFastq,
+                &[(
+                    ArtifactId::new("run-1-gzip-1").expect("id"),
+                    compressed.to_string_lossy().into_owned(),
+                    i64::try_from(bytes).expect("size"),
+                )],
+            )
+            .expect("artifact");
+        store
+            .transition_run(
+                &run_id,
+                RunState::Compressing,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )
+            .expect("compressing");
+        store
+            .transition_run(
+                &run_id,
+                RunState::Checksumming,
+                Some(CHECKSUM_CHECKPOINT),
+                None,
+            )
+            .expect("checksumming");
+        let hash = match sha256_file(&compressed, &StopToken::default()).expect("hash") {
+            HashOutcome::Complete(hash) => hash,
+            HashOutcome::Stopped => panic!("no stop"),
+        };
+        fs::write(
+            compressed_dir.join("SHA256SUMS"),
+            format!("{hash}  SRR000001.fastq.gz\n"),
+        )
+        .expect("orphan manifest");
+
+        let result = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .expect("recovered manifest");
+        assert_eq!(result.run.state, RunState::Complete);
+        assert_eq!(
+            store
+                .list_artifacts_by_kind(&run_id, ArtifactKind::Checksum)
+                .expect("checksum artifacts")
+                .len(),
+            1
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn checksum_recovery_refuses_mismatching_manifest_without_deleting_it() {
+        let root = temp_root("checksum-corruption");
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAA\n+\nII\n")]);
+        let source = root.join("fastq").join("SRR000001").join("SRR000001.fastq");
+        let compressed_dir = source.parent().expect("parent").join("compressed");
+        fs::create_dir(&compressed_dir).expect("compressed");
+        let compressed = compressed_dir.join("SRR000001.fastq.gz");
+        gzip_file(&source, &compressed, &StopToken::default()).expect("gzip");
+        let bytes = metadata_len(&compressed, "bytes").expect("size");
+        store
+            .record_finalized_artifacts(
+                &run_id,
+                ArtifactKind::CompressedFastq,
+                &[(
+                    ArtifactId::new("run-1-gzip-1").expect("id"),
+                    compressed.to_string_lossy().into_owned(),
+                    i64::try_from(bytes).expect("size"),
+                )],
+            )
+            .expect("artifact");
+        store
+            .transition_run(&run_id, RunState::Compressing, Some(COMPRESSION_CHECKPOINT), None)
+            .expect("compressing");
+        store
+            .transition_run(&run_id, RunState::Checksumming, Some(CHECKSUM_CHECKPOINT), None)
+            .expect("checksumming");
+        let manifest = compressed_dir.join("SHA256SUMS");
+        fs::write(&manifest, b"invalid checksum\n").expect("manifest");
+
+        assert!(FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .is_err());
+        assert_eq!(
+            store.get_run(&run_id).expect("run").expect("exists").state,
+            RunState::Failed
+        );
+        assert_eq!(fs::read(&manifest).expect("manifest"), b"invalid checksum\n");
+        assert!(source.exists());
         fs::remove_dir_all(root).expect("cleanup");
     }
 
