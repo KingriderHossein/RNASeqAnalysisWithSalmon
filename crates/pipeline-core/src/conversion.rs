@@ -26,6 +26,30 @@ pub struct ConversionResult {
     pub fasterq: Option<CommandOutcome>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversionRequest {
+    pub fastq_root: PathBuf,
+    pub temp_root: PathBuf,
+    pub log_root: PathBuf,
+    pub threads: u32,
+}
+
+impl ConversionRequest {
+    pub fn new(
+        fastq_root: impl Into<PathBuf>,
+        temp_root: impl Into<PathBuf>,
+        log_root: impl Into<PathBuf>,
+        threads: u32,
+    ) -> Self {
+        Self {
+            fastq_root: fastq_root.into(),
+            temp_root: temp_root.into(),
+            log_root: log_root.into(),
+            threads,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ConversionError {
     Store(StoreError),
@@ -85,7 +109,9 @@ impl fmt::Display for ConversionError {
                 "FASTQ file {} is too large to persist as i64 bytes: {bytes}",
                 path.display()
             ),
-            Self::PersistedPaths(error) => write!(f, "cannot decode persisted FASTQ paths: {error}"),
+            Self::PersistedPaths(error) => {
+                write!(f, "cannot decode persisted FASTQ paths: {error}")
+            }
         }
     }
 }
@@ -142,10 +168,7 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
         &self,
         store: &mut StateStore,
         run_id: &RunId,
-        fastq_root: impl AsRef<Path>,
-        temp_root: impl AsRef<Path>,
-        log_root: impl AsRef<Path>,
-        threads: u32,
+        request: &ConversionRequest,
         stop: &StopToken,
     ) -> Result<ConversionResult, ConversionError> {
         let current = store
@@ -163,7 +186,7 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
             });
         }
 
-        if threads == 0 {
+        if request.threads == 0 {
             return Err(ConversionError::Plan(SraPlanError::ZeroThreads));
         }
 
@@ -173,9 +196,9 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
             .sra_path
             .as_deref()
             .ok_or(ConversionError::MissingPersistedSraPath)?;
-        let fastq_root = fastq_root.as_ref();
-        let temp_root = temp_root.as_ref();
-        let log_root = log_root.as_ref();
+        let fastq_root = request.fastq_root.as_path();
+        let temp_root = request.temp_root.as_path();
+        let log_root = request.log_root.as_path();
         let final_directory = fastq_root.join(accession.as_str());
 
         if final_directory.exists() {
@@ -184,8 +207,8 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
 
         match current.state {
             RunState::SraValid | RunState::PausedAtBoundary => {}
-            RunState::Failed if current.last_checkpoint.as_deref() == Some(CONVERSION_CHECKPOINT) => {
-            }
+            RunState::Failed
+                if current.last_checkpoint.as_deref() == Some(CONVERSION_CHECKPOINT) => {}
             RunState::Failed => {
                 return Err(ConversionError::UnknownFailedCheckpoint(
                     current.last_checkpoint.clone(),
@@ -228,7 +251,12 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
 
         let plan = match self
             .planner
-            .fasterq(sra_path, &staging_directory, &temp_directory, threads)
+            .fasterq(
+                    sra_path,
+                    &staging_directory,
+                    &temp_directory,
+                    request.threads,
+                )
         {
             Ok(plan) => plan,
             Err(error) => {
@@ -352,16 +380,15 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
             return Err(error);
         }
 
-        fs::rename(&staging_directory, &final_directory).map_err(|source| {
-            ConversionError::Io {
+        if let Err(source) = fs::rename(&staging_directory, &final_directory) {
+            let error = ConversionError::Io {
                 operation: "finalize FASTQ directory",
                 path: final_directory.clone(),
                 source,
-            }
-        }).map_err(|error| {
-            let _ = self.persist_internal_failure(store, run_id, &error);
-            error
-        })?;
+            };
+            self.persist_internal_failure(store, run_id, &error)?;
+            return Err(error);
+        }
 
         let mut finalized = Vec::with_capacity(staged_fastqs.len());
         for (index, staged_path) in staged_fastqs.iter().enumerate() {
@@ -383,8 +410,7 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
                 path: final_path.clone(),
                 bytes,
             })?;
-            let artifact_id =
-                ArtifactId::new(format!("{}-fastq-{}", run_id.as_str(), index + 1))?;
+            let artifact_id = ArtifactId::new(format!("{}-fastq-{}", run_id.as_str(), index + 1))?;
             finalized.push((
                 artifact_id,
                 final_path.to_string_lossy().into_owned(),
@@ -430,7 +456,8 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
 }
 
 fn decode_fastq_paths(value: &str) -> Result<Vec<PathBuf>, ConversionError> {
-    let paths: Vec<String> = serde_json::from_str(value).map_err(ConversionError::PersistedPaths)?;
+    let paths: Vec<String> =
+        serde_json::from_str(value).map_err(ConversionError::PersistedPaths)?;
     Ok(paths.into_iter().map(PathBuf::from).collect())
 }
 
@@ -523,10 +550,7 @@ fn is_accession_fastq_name(name: &str, accession: &str) -> bool {
         || (name.starts_with(&format!("{accession}_")) && name.ends_with(".fastq"))
 }
 
-fn cleanup_attempt_directories(
-    staging_directory: &Path,
-    temp_directory: &Path,
-) -> Vec<String> {
+fn cleanup_attempt_directories(staging_directory: &Path, temp_directory: &Path) -> Vec<String> {
     let mut warnings = Vec::new();
     for path in [staging_directory, temp_directory] {
         if let Err(error) = remove_owned_directory_if_present(path) {
@@ -694,6 +718,15 @@ mod tests {
         ))
     }
 
+    fn request(root: &Path, threads: u32) -> ConversionRequest {
+        ConversionRequest::new(
+            root.join("fastq"),
+            root.join("tmp"),
+            root.join("logs"),
+            threads,
+        )
+    }
+
     fn sra_valid_store(root: &Path) -> (StateStore, RunId, PathBuf) {
         let mut store = StateStore::open_in_memory().expect("store");
         let job_id = JobId::new("job-1").expect("job id");
@@ -729,11 +762,7 @@ mod tests {
             .transition_run(&run_id, RunState::Downloading, Some("prefetch"), None)
             .expect("downloading");
         store
-            .update_run_download_snapshot(
-                &run_id,
-                15,
-                sra_path.to_string_lossy().as_ref(),
-            )
+            .update_run_download_snapshot(&run_id, 15, sra_path.to_string_lossy().as_ref())
             .expect("SRA snapshot");
         store
             .transition_run(&run_id, RunState::Downloaded, Some("prefetch-complete"), None)
@@ -765,10 +794,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                4,
+                &request(&root, 4),
                 &StopToken::default(),
             )
             .expect("conversion");
@@ -819,10 +845,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                2,
+                &request(&root, 2),
                 &StopToken::default(),
             )
             .expect("conversion");
@@ -851,10 +874,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                2,
+                &request(&root, 2),
                 &StopToken::default(),
             )
             .expect("paused conversion");
@@ -897,10 +917,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                2,
+                &request(&root, 2),
                 &StopToken::default(),
             )
             .expect("failed outcome");
@@ -910,10 +927,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                2,
+                &request(&root, 2),
                 &StopToken::default(),
             )
             .expect("retry");
@@ -931,10 +945,7 @@ mod tests {
     }
 
     fn sra_path_os(root: &Path) -> OsString {
-        root.join("sra")
-            .join("SRR000001")
-            .as_os_str()
-            .to_owned()
+        root.join("sra").join("SRR000001").as_os_str().to_owned()
     }
 
     #[test]
@@ -951,10 +962,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                2,
+                &request(&root, 2),
                 &StopToken::default(),
             )
             .expect_err("must refuse overwrite");
@@ -983,10 +991,7 @@ mod tests {
             .execute_to_fastq_ready(
                 &mut store,
                 &run_id,
-                root.join("fastq"),
-                root.join("tmp"),
-                root.join("logs"),
-                2,
+                &request(&root, 2),
                 &StopToken::default(),
             )
             .expect("explicit failed outcome");
