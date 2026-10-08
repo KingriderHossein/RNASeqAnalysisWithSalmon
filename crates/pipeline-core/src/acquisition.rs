@@ -278,7 +278,10 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             AcquisitionStage::Prefetch,
             attempt_context.log_root,
         )?;
-        let outcome = match self.runner.run(&plan.command, &context, attempt_context.stop) {
+        let outcome = match self
+            .runner
+            .run(&plan.command, &context, attempt_context.stop)
+        {
             Ok(outcome) => outcome,
             Err(source) => {
                 self.persist_process_error(
@@ -443,7 +446,10 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             AcquisitionStage::Validation,
             attempt_context.log_root,
         )?;
-        let outcome = match self.runner.run(&plan.command, &context, attempt_context.stop) {
+        let outcome = match self
+            .runner
+            .run(&plan.command, &context, attempt_context.stop)
+        {
             Ok(outcome) => outcome,
             Err(source) => {
                 self.persist_process_error(
