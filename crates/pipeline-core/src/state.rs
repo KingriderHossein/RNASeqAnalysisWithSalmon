@@ -67,10 +67,19 @@ impl RunState {
                     Converting,
                     PausedAtBoundary | FastqReady | Failed | Cancelled
                 )
-                | (PausedAtBoundary, Converting | Compressing | Checksumming | Cancelled)
+                | (
+                    PausedAtBoundary,
+                    Converting | Compressing | Checksumming | Cancelled
+                )
                 | (FastqReady, Compressing | Checksumming | Failed | Cancelled)
-                | (Compressing, PausedAtBoundary | Checksumming | Failed | Cancelled)
-                | (Checksumming, PausedAtBoundary | Complete | Failed | Cancelled)
+                | (
+                    Compressing,
+                    PausedAtBoundary | Checksumming | Failed | Cancelled
+                )
+                | (
+                    Checksumming,
+                    PausedAtBoundary | Complete | Failed | Cancelled
+                )
         )
     }
 
