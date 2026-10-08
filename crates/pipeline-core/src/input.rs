@@ -1,8 +1,7 @@
 use csv::ReaderBuilder;
 use std::{
     collections::HashSet,
-    fmt,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
 };
 use url::Url;
@@ -169,7 +168,11 @@ impl fmt::Display for InputError {
                 write!(f, "cannot parse batch file {}: {source}", path.display())
             }
             Self::EmptyBatch(path) => {
-                write!(f, "batch file contains no supported accessions: {}", path.display())
+                write!(
+                    f,
+                    "batch file contains no supported accessions: {}",
+                    path.display()
+                )
             }
             Self::InvalidUrl(source) => write!(f, "invalid direct URL: {source}"),
             Self::UnsupportedUrlScheme(scheme) => {
@@ -366,11 +369,8 @@ mod tests {
     #[test]
     fn parses_text_batch_and_deduplicates_in_first_seen_order() {
         let path = temp_file("txt");
-        fs::write(
-            &path,
-            "SRR000002\nSRR000001\nsrr000002\nnot_an_accession\n",
-        )
-        .expect("write batch file");
+        fs::write(&path, "SRR000002\nSRR000001\nsrr000002\nnot_an_accession\n")
+            .expect("write batch file");
 
         let batch = parse_batch_file(&path).expect("parse batch");
         let values = batch
@@ -406,8 +406,11 @@ mod tests {
     #[test]
     fn parses_tsv_batch() {
         let path = temp_file("tsv");
-        fs::write(&path, "run_accession\tgroup\nERR000001\ttumor\nDRR000002\tnormal\n")
-            .expect("write TSV");
+        fs::write(
+            &path,
+            "run_accession\tgroup\nERR000001\ttumor\nDRR000002\tnormal\n",
+        )
+        .expect("write TSV");
 
         let batch = parse_batch_file(&path).expect("parse TSV");
         assert_eq!(batch.accessions.len(), 2);
