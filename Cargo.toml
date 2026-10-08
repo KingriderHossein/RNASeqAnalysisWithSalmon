@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/pipeline-core",
+    "crates/pipeline-cli",
+]
+resolver = "2"
