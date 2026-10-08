@@ -4,5 +4,6 @@ description = "Use the bounded local Module A bridge; no frontend shell or gener
 commands.allow = [
   "create_download_job", "open_download_job", "list_download_jobs",
   "run_download_job", "request_download_control", "inspect_storage",
-  "choose_folder", "choose_database", "read_log_tail", "tool_status"
+  "choose_folder", "choose_database", "read_log_tail", "tool_status",
+  "preview_batch_file", "choose_batch_file"
 ]

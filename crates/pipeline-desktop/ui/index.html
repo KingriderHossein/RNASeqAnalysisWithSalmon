@@ -11,7 +11,7 @@
   <header class="app-header">
     <div class="brand-mark" aria-hidden="true">A</div>
     <div><h1>RNA-seq Download Manager</h1><p>Download, convert and verify sequencing reads.</p></div>
-    <span class="version">Module A · v0.1.4</span>
+    <span class="version">Module A · v0.1.5</span>
     <button id="open-job" class="secondary">Open saved job</button>
   </header>
   <div id="host-notice" class="notice" hidden>Open this interface in the desktop app to access local jobs. This browser view cannot start downloads.</div>
@@ -26,6 +26,13 @@
         <label for="runs">Run accessions</label>
         <textarea id="runs" required rows="5" placeholder="One SRR, ERR or DRR run per line" spellcheck="false"></textarea>
         <p class="hint">Paste one run or a list. Study accessions need resolution first.</p>
+        <details class="space-settings"><summary>Import runs from a file</summary>
+          <label for="batch-path">TXT, CSV or TSV file</label>
+          <div class="input-action"><input id="batch-path" placeholder="Choose a file or paste its path"><button id="choose-batch" type="button" class="secondary">Browse</button></div>
+          <button id="preview-batch" type="button" class="secondary">Preview file</button>
+          <p class="hint">Up to 2 MiB and 10,000 unique runs. A table needs one run column. Import includes all listed runs; it does not select a scientific cohort.</p>
+          <p id="batch-status" class="hint" role="status" aria-live="polite" hidden></p>
+        </details>
         <label for="workspace">Download workspace</label>
         <div class="input-action"><input id="workspace" required placeholder="Choose a folder"><button id="choose-workspace" type="button" class="secondary">Browse</button></div>
         <label for="threads">Conversion threads</label>

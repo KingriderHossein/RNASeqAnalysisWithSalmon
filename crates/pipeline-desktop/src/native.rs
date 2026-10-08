@@ -4,6 +4,29 @@ use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
+async fn preview_batch_file(path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || DesktopBridge::preview_batch(&PathBuf::from(path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn choose_batch_file() -> Result<Option<String>, String> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Import run accessions")
+        .add_filter("Run batch", &["txt", "csv", "tsv"])
+        .pick_file()
+        .await
+        .map(|file| {
+            file.path()
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "batch path must be valid UTF-8".into())
+        })
+        .transpose()
+}
+
+#[tauri::command]
 async fn create_download_job(
     bridge: State<'_, DesktopBridge>,
     workspace: String,
@@ -159,7 +182,8 @@ pub fn run() {
         .manage(DesktopBridge::default())
         .invoke_handler(tauri::generate_handler![create_download_job, open_download_job,
             list_download_jobs, run_download_job, request_download_control, inspect_storage,
-            choose_folder, choose_database, read_log_tail, tool_status])
+            choose_folder, choose_database, read_log_tail, tool_status,
+            preview_batch_file, choose_batch_file])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.state::<DesktopBridge>().active() {
