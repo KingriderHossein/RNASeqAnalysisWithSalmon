@@ -348,14 +348,8 @@ impl FastqFinalizationExecutor {
         if let Err(error) =
             store.record_finalized_artifacts(&current.id, ArtifactKind::CompressedFastq, &finalized)
         {
-            // A finalized directory is recovery evidence, never cleanup staging.
-            let reason = error.to_string();
-            let _ = store.transition_run(
-                &current.id,
-                RunState::Failed,
-                Some(COMPRESSION_CHECKPOINT),
-                Some(&reason),
-            );
+            // Retain COMPRESSING and the published set for verified adoption on resume.
+            // FAILED gzip retry starts new compression and must not replace this set.
             return Err(FinalizationError::Store(error));
         }
         store.transition_run(
@@ -1913,5 +1907,51 @@ mod tests {
         assert_eq!(result.run.state, RunState::Complete);
         drop(store);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn published_data_survive_database_failure_and_can_be_adopted_on_resume() {
+        for kind in ["COMPRESSED_FASTQ", "CHECKSUM"] {
+            let root = temp_root(kind);
+            let original = b"@r\nAC\n+\nII\n";
+            let (mut store, run_id, _) = fastq_ready_store(&root, &[("SRR000001.fastq", original)]);
+            // Isolated test fault injection deliberately bypasses the engine lock.
+            let injector = rusqlite::Connection::open(root.join("state.sqlite")).unwrap();
+            injector
+                .execute_batch(&format!(
+                    "CREATE TRIGGER forced_failure BEFORE INSERT ON artifacts \
+                     WHEN NEW.kind = '{kind}' BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;"
+                ))
+                .unwrap();
+            let failed = FastqFinalizationExecutor
+                .execute_to_complete(&mut store, &run_id, &StopToken::default());
+            if let Ok(result) = failed {
+                assert!(matches!(
+                    result.disposition,
+                    FinalizationDisposition::Failed { .. }
+                ));
+            }
+            let dir = root.join("fastq/SRR000001");
+            assert!(dir.join("compressed/SRR000001.fastq.gz").is_file());
+            assert_eq!(fs::read(dir.join("SRR000001.fastq")).unwrap(), original);
+            if kind == "CHECKSUM" {
+                assert!(dir.join("compressed/SHA256SUMS").is_file());
+            } else {
+                assert_eq!(
+                    store.get_run(&run_id).unwrap().unwrap().state,
+                    RunState::Compressing
+                );
+            }
+            injector.execute_batch("DROP TRIGGER forced_failure;").unwrap();
+            drop(injector);
+            drop(store);
+            let mut resumed = StateStore::open(root.join("state.sqlite")).unwrap();
+            let result = FastqFinalizationExecutor
+                .execute_to_complete(&mut resumed, &run_id, &StopToken::default())
+                .unwrap();
+            assert_eq!(result.run.state, RunState::Complete);
+            drop(resumed);
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 }
