@@ -734,22 +734,18 @@ impl StateStore {
                  WHERE artifact_id = ?1 AND kind = ?5",
                 params![
                     artifact_id.as_str(),
-                    sha256,
+                    sha256.as_str(),
                     ArtifactValidationState::Valid.to_string(),
                     now,
                     ArtifactKind::CompressedFastq.to_string(),
                 ],
-            );
+            )?;
 
-            match changed {
-                Ok(0) => {
-                    return Err(StoreError::NotFound {
-                        kind: "compressed FASTQ artifact",
-                        id: artifact_id.to_string(),
-                    });
-                }
-                Ok(_) => {}
-                Err(error) => return Err(StoreError::Database(error)),
+            if changed == 0 {
+                return Err(StoreError::NotFound {
+                    kind: "compressed FASTQ artifact",
+                    id: artifact_id.to_string(),
+                });
             }
         }
 
@@ -762,9 +758,9 @@ impl StateStore {
                 checksum_artifact.0.as_str(),
                 checksum_artifact.1.as_str(),
                 ArtifactKind::Checksum.to_string(),
-                checksum_artifact.2,
+                checksum_artifact.2.as_str(),
                 checksum_artifact.3,
-                checksum_artifact.4,
+                checksum_artifact.4.as_str(),
                 ArtifactValidationState::Valid.to_string(),
                 now,
             ],
