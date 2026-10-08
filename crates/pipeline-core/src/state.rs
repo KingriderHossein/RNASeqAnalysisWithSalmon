@@ -54,13 +54,19 @@ impl RunState {
             (Queued, Resolving | Cancelled)
                 | (Resolving, Ready | Failed | Cancelled)
                 | (Ready, Downloading | Cancelled)
-                | (Downloading, Paused | WaitingForNetwork | Downloaded | Failed | Cancelled)
+                | (
+                    Downloading,
+                    Paused | WaitingForNetwork | Downloaded | Failed | Cancelled
+                )
                 | (Paused, Downloading | Cancelled)
                 | (WaitingForNetwork, Downloading | Failed | Cancelled)
                 | (Downloaded, Validating | Failed | Cancelled)
                 | (Validating, SraValid | Failed | Cancelled)
                 | (SraValid, Converting | Checksumming | Cancelled)
-                | (Converting, PausedAtBoundary | FastqReady | Failed | Cancelled)
+                | (
+                    Converting,
+                    PausedAtBoundary | FastqReady | Failed | Cancelled
+                )
                 | (PausedAtBoundary, Converting | Cancelled)
                 | (FastqReady, Compressing | Checksumming | Failed | Cancelled)
                 | (Compressing, Checksumming | Failed | Cancelled)
@@ -72,7 +78,10 @@ impl RunState {
         if self.can_transition_to(next) {
             Ok(next)
         } else {
-            Err(TransitionError { from: self, to: next })
+            Err(TransitionError {
+                from: self,
+                to: next,
+            })
         }
     }
 }
@@ -110,7 +119,11 @@ pub struct TransitionError {
 
 impl fmt::Display for TransitionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid workflow transition: {} -> {}", self.from, self.to)
+        write!(
+            f,
+            "invalid workflow transition: {} -> {}",
+            self.from, self.to
+        )
     }
 }
 
@@ -161,8 +174,7 @@ mod tests {
 
     #[test]
     fn conversion_pause_resumes_from_boundary() {
-        assert!(RunState::Converting
-            .can_transition_to(RunState::PausedAtBoundary));
+        assert!(RunState::Converting.can_transition_to(RunState::PausedAtBoundary));
         assert!(RunState::PausedAtBoundary.can_transition_to(RunState::Converting));
     }
 
