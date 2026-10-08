@@ -180,10 +180,11 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         }
 
         let accession = Accession::parse(&current.accession_or_source)?;
-        let attempt = store.begin_run_attempt(run_id)?;
 
         match current.state {
             RunState::Ready | RunState::Paused | RunState::WaitingForNetwork => {
+                let plan = self.planner.prefetch(&accession, output_root.as_ref())?;
+                let attempt = store.begin_run_attempt(run_id)?;
                 store.transition_run(
                     run_id,
                     RunState::Downloading,
@@ -195,21 +196,19 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                     run_id,
                     &accession,
                     attempt,
-                    output_root.as_ref(),
+                    plan,
                     log_root.as_ref(),
                     stop,
                 )
             }
-            RunState::Downloaded => self.run_validation(
-                store,
-                run_id,
-                attempt,
-                log_root.as_ref(),
-                stop,
-                None,
-            ),
+            RunState::Downloaded => {
+                let attempt = store.begin_run_attempt(run_id)?;
+                self.run_validation(store, run_id, attempt, log_root.as_ref(), stop, None)
+            }
             RunState::Failed => match current.last_checkpoint.as_deref() {
                 Some(PREFETCH_CHECKPOINT) => {
+                    let plan = self.planner.prefetch(&accession, output_root.as_ref())?;
+                    let attempt = store.begin_run_attempt(run_id)?;
                     store.retry_run(
                         run_id,
                         RunState::Downloading,
@@ -220,25 +219,19 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                         run_id,
                         &accession,
                         attempt,
-                        output_root.as_ref(),
+                        plan,
                         log_root.as_ref(),
                         stop,
                     )
                 }
                 Some(VALIDATION_CHECKPOINT) => {
+                    let attempt = store.begin_run_attempt(run_id)?;
                     store.retry_run(
                         run_id,
                         RunState::Validating,
                         Some(VALIDATION_CHECKPOINT),
                     )?;
-                    self.run_validation(
-                        store,
-                        run_id,
-                        attempt,
-                        log_root.as_ref(),
-                        stop,
-                        None,
-                    )
+                    self.run_validation(store, run_id, attempt, log_root.as_ref(), stop, None)
                 }
                 other => Err(AcquisitionError::UnknownFailedCheckpoint(
                     other.map(str::to_owned),
@@ -254,11 +247,10 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         run_id: &RunId,
         accession: &Accession,
         attempt: i64,
-        output_root: &Path,
+        plan: crate::PrefetchPlan,
         log_root: &Path,
         stop: &StopToken,
     ) -> Result<AcquisitionResult, AcquisitionError> {
-        let plan = self.planner.prefetch(accession, output_root)?;
         let context = self.process_context(
             store,
             run_id,
@@ -394,12 +386,46 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
             return Err(AcquisitionError::UnsupportedState(current.state));
         }
 
-        let sra_path = current
-            .sra_path
-            .as_deref()
-            .ok_or(AcquisitionError::MissingPersistedSraPath)?;
-        let plan = self.planner.validate(sra_path)?;
-        let accession = Accession::parse(&current.accession_or_source)?;
+        let sra_path = match current.sra_path.as_deref() {
+            Some(path) => path,
+            None => {
+                let reason =
+                    "downloaded run is missing its persisted SRA accession-directory path";
+                store.transition_run(
+                    run_id,
+                    RunState::Failed,
+                    Some(VALIDATION_CHECKPOINT),
+                    Some(reason),
+                )?;
+                return Err(AcquisitionError::MissingPersistedSraPath);
+            }
+        };
+        let plan = match self.planner.validate(sra_path) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let reason = format!("cannot plan vdb-validate: {error}");
+                store.transition_run(
+                    run_id,
+                    RunState::Failed,
+                    Some(VALIDATION_CHECKPOINT),
+                    Some(&reason),
+                )?;
+                return Err(AcquisitionError::Plan(error));
+            }
+        };
+        let accession = match Accession::parse(&current.accession_or_source) {
+            Ok(accession) => accession,
+            Err(error) => {
+                let reason = format!("cannot parse persisted run accession: {error}");
+                store.transition_run(
+                    run_id,
+                    RunState::Failed,
+                    Some(VALIDATION_CHECKPOINT),
+                    Some(&reason),
+                )?;
+                return Err(AcquisitionError::Input(error));
+            }
+        };
         let context = self.process_context(
             store,
             run_id,
@@ -587,21 +613,14 @@ mod tests {
                 .lock()
                 .expect("seen lock")
                 .push((spec.clone(), context.clone()));
-            self.outcomes
+            Ok(self
+                .outcomes
                 .lock()
                 .expect("outcomes lock")
                 .pop_front()
-                .expect("fake outcome")
-                .pipe(Ok)
+                .expect("fake outcome"))
         }
     }
-
-    trait Pipe: Sized {
-        fn pipe<T>(self, function: impl FnOnce(Self) -> T) -> T {
-            function(self)
-        }
-    }
-    impl<T> Pipe for T {}
 
     fn registry() -> ToolRegistry {
         ToolRegistry {
