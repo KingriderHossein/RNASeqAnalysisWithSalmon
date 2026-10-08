@@ -2,7 +2,7 @@ use crate::{
     ArtifactId, ArtifactKind, ArtifactRecord, RunId, RunRecord, RunState, StateStore, StopToken,
     StoreError,
 };
-use flate2::{write::GzEncoder, Compression};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use sha2::{Digest, Sha256};
 use std::{
     fmt,
@@ -54,6 +54,7 @@ pub enum FinalizationError {
     MissingFastqPaths,
     InvalidFastqPath(PathBuf),
     MixedFastqParents,
+    InvalidCompressedOutput(PathBuf),
     FinalCompressedDirectoryExists(PathBuf),
     ChecksumManifestExists(PathBuf),
     Io {
@@ -98,6 +99,11 @@ impl fmt::Display for FinalizationError {
             Self::MixedFastqParents => {
                 f.write_str("all FASTQ inputs for one run must share the same parent directory")
             }
+            Self::InvalidCompressedOutput(path) => write!(
+                f,
+                "compressed FASTQ does not match source or is invalid: {}",
+                path.display()
+            ),
             Self::FinalCompressedDirectoryExists(path) => write!(
                 f,
                 "compressed output directory already exists and will not be overwritten: {}",
@@ -137,6 +143,7 @@ impl std::error::Error for FinalizationError {
             | Self::MissingFastqPaths
             | Self::InvalidFastqPath(_)
             | Self::MixedFastqParents
+            | Self::InvalidCompressedOutput(_)
             | Self::FinalCompressedDirectoryExists(_)
             | Self::ChecksumManifestExists(_)
             | Self::SizeOverflow { .. } => None,
@@ -241,7 +248,10 @@ impl FastqFinalizationExecutor {
             target_name.push(".gz");
             let staged_target = staging_directory.join(target_name);
 
-            match gzip_file(source, &staged_target, stop) {
+            match gzip_file(source, &staged_target, stop).and_then(|result| match result {
+                StreamOutcome::Complete => verify_gzip_pair(source, &staged_target, stop),
+                StreamOutcome::Stopped => Ok(StreamOutcome::Stopped),
+            }) {
                 Ok(StreamOutcome::Complete) => staged.push(staged_target),
                 Ok(StreamOutcome::Stopped) => {
                     let warning = cleanup_warning(remove_owned_directory(&staging_directory));
@@ -654,6 +664,62 @@ fn gzip_file(
             source: source_error,
         })?;
     Ok(StreamOutcome::Complete)
+}
+
+fn verify_gzip_pair(
+    source: &Path,
+    compressed: &Path,
+    stop: &StopToken,
+) -> Result<StreamOutcome, FinalizationError> {
+    let original = fs::File::open(source).map_err(|source_error| FinalizationError::Io {
+        operation: "open source FASTQ for gzip verification",
+        path: source.to_path_buf(),
+        source: source_error,
+    })?;
+    let gzip = fs::File::open(compressed).map_err(|source_error| FinalizationError::Io {
+        operation: "open gzip for verification",
+        path: compressed.to_path_buf(),
+        source: source_error,
+    })?;
+    let mut original = BufReader::new(original);
+    let mut decoded = GzDecoder::new(BufReader::new(gzip));
+    let mut original_buffer = vec![0_u8; BUFFER_SIZE];
+    let mut decoded_buffer = vec![0_u8; BUFFER_SIZE];
+
+    loop {
+        if stop.is_stop_requested() {
+            return Ok(StreamOutcome::Stopped);
+        }
+        let count = original.read(&mut original_buffer).map_err(|source_error| {
+            FinalizationError::Io {
+                operation: "read source FASTQ for gzip verification",
+                path: source.to_path_buf(),
+                source: source_error,
+            }
+        })?;
+        if count == 0 {
+            let mut excess = [0_u8; 1];
+            let extra = decoded.read(&mut excess).map_err(|source_error| FinalizationError::Io {
+                operation: "finish gzip verification",
+                path: compressed.to_path_buf(),
+                source: source_error,
+            })?;
+            if extra != 0 {
+                return Err(FinalizationError::InvalidCompressedOutput(compressed.to_path_buf()));
+            }
+            return Ok(StreamOutcome::Complete);
+        }
+        decoded.read_exact(&mut decoded_buffer[..count]).map_err(|source_error| {
+            FinalizationError::Io {
+                operation: "decode gzip for verification",
+                path: compressed.to_path_buf(),
+                source: source_error,
+            }
+        })?;
+        if original_buffer[..count] != decoded_buffer[..count] {
+            return Err(FinalizationError::InvalidCompressedOutput(compressed.to_path_buf()));
+        }
+    }
 }
 
 fn sha256_file(path: &Path, stop: &StopToken) -> Result<HashOutcome, FinalizationError> {
@@ -1116,6 +1182,35 @@ mod tests {
         assert_eq!(resumed.attempt, Some(1));
         assert!(compressed_path.is_file());
 
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn staged_gzip_verification_rejects_corruption_and_mismatched_source() {
+        let root = temp_root("gzip-integrity");
+        fs::create_dir_all(&root).expect("root");
+        let source = root.join("sample.fastq");
+        let compressed = root.join("sample.fastq.gz");
+        fs::write(&source, b"@r\nAAAA\n+\nIIII\n").expect("source");
+        gzip_file(&source, &compressed, &StopToken::default()).expect("gzip");
+        assert_eq!(
+            verify_gzip_pair(&source, &compressed, &StopToken::default())
+                .expect("verify"),
+            StreamOutcome::Complete
+        );
+
+        // The gzip is valid but no longer represents the source FASTQ.
+        fs::write(&source, b"@r\nCCCC\n+\nIIII\n").expect("mutated source");
+        assert!(matches!(
+            verify_gzip_pair(&source, &compressed, &StopToken::default()),
+            Err(FinalizationError::InvalidCompressedOutput(_))
+        ));
+        fs::write(&compressed, b"not-a-gzip").expect("corrupt gzip");
+        assert!(verify_gzip_pair(&source, &compressed, &StopToken::default()).is_err());
+        assert_eq!(
+            fs::read(&source).expect("source preserved"),
+            b"@r\nCCCC\n+\nIIII\n"
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 
