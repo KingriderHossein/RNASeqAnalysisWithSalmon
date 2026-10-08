@@ -1,9 +1,9 @@
 pub mod identity;
 pub mod input;
 pub mod persistence;
+pub mod sra;
 pub mod state;
 pub mod storage;
-pub mod sra;
 pub mod tool;
 
 pub use identity::{ArtifactId, IdError, JobId, RunId};
