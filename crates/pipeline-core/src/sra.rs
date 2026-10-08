@@ -1,24 +1,9 @@
-use crate::{Accession, AccessionLevel, ToolKind, ToolRegistry};
+use crate::{Accession, AccessionLevel, CommandSpec, ToolKind, ToolRegistry};
 use std::{
     ffi::OsString,
     fmt,
     path::{Path, PathBuf},
 };
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandSpec {
-    pub program: PathBuf,
-    pub args: Vec<OsString>,
-}
-
-impl CommandSpec {
-    pub fn new(program: impl Into<PathBuf>, args: Vec<OsString>) -> Self {
-        Self {
-            program: program.into(),
-            args,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrefetchPlan {

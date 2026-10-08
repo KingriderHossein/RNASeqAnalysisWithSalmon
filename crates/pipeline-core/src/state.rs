@@ -84,6 +84,33 @@ impl RunState {
             })
         }
     }
+
+    pub fn is_retry_target(self) -> bool {
+        matches!(
+            self,
+            Self::Resolving
+                | Self::Downloading
+                | Self::Validating
+                | Self::Converting
+                | Self::Compressing
+                | Self::Checksumming
+        )
+    }
+
+    pub fn can_retry_to(self, next: Self) -> bool {
+        self == Self::Failed && next.is_retry_target()
+    }
+
+    pub fn retry_to(self, next: Self) -> Result<Self, RetryTransitionError> {
+        if self.can_retry_to(next) {
+            Ok(next)
+        } else {
+            Err(RetryTransitionError {
+                from: self,
+                to: next,
+            })
+        }
+    }
 }
 
 impl fmt::Display for RunState {
@@ -215,6 +242,20 @@ impl fmt::Display for TransitionError {
 
 impl std::error::Error for TransitionError {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetryTransitionError {
+    pub from: RunState,
+    pub to: RunState,
+}
+
+impl fmt::Display for RetryTransitionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid retry transition: {} -> {}", self.from, self.to)
+    }
+}
+
+impl std::error::Error for RetryTransitionError {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateParseError {
     kind: &'static str,
@@ -314,6 +355,18 @@ mod tests {
         }
         assert!(RunState::Complete.is_terminal());
         assert!(RunState::Cancelled.is_terminal());
+    }
+
+    #[test]
+    fn failed_requires_explicit_retry_transition() {
+        assert!(!RunState::Failed.can_transition_to(RunState::Downloading));
+        assert_eq!(
+            RunState::Failed.retry_to(RunState::Downloading),
+            Ok(RunState::Downloading)
+        );
+        assert!(RunState::Failed.retry_to(RunState::Complete).is_err());
+        assert!(RunState::Failed.retry_to(RunState::Cancelled).is_err());
+        assert!(RunState::Ready.retry_to(RunState::Downloading).is_err());
     }
 
     #[test]
