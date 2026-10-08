@@ -312,11 +312,19 @@ impl FastqFinalizationExecutor {
             compressed_paths.push(final_path);
         }
 
-        store.record_finalized_artifacts(
-            &current.id,
-            ArtifactKind::CompressedFastq,
-            &finalized,
-        )?;
+        if let Err(error) =
+            store.record_finalized_artifacts(&current.id, ArtifactKind::CompressedFastq, &finalized)
+        {
+            let cleanup = remove_owned_directory(&compressed_directory);
+            let reason = append_cleanup_warning(error.to_string(), cleanup);
+            let _ = store.transition_run(
+                &current.id,
+                RunState::Failed,
+                Some(COMPRESSION_CHECKPOINT),
+                Some(&reason),
+            );
+            return Err(FinalizationError::Store(error));
+        }
         store.transition_run(
             &current.id,
             RunState::Checksumming,
@@ -451,7 +459,7 @@ impl FastqFinalizationExecutor {
         let manifest_hash = sha256_bytes(lines.as_bytes());
         let checksum_id = ArtifactId::new(format!("{}-sha256sums", run_id.as_str()))?;
 
-        store.record_checksum_results(
+        if let Err(error) = store.record_checksum_results(
             &compressed_hashes,
             &(
                 checksum_id,
@@ -460,7 +468,16 @@ impl FastqFinalizationExecutor {
                 manifest_size,
                 manifest_hash,
             ),
-        )?;
+        ) {
+            let _ = fs::remove_file(&manifest_path);
+            let _ = store.transition_run(
+                run_id,
+                RunState::Failed,
+                Some(CHECKSUM_CHECKPOINT),
+                Some(&error.to_string()),
+            );
+            return Err(FinalizationError::Store(error));
+        }
 
         let run = store.transition_run(
             run_id,
@@ -912,7 +929,33 @@ mod tests {
             store.list_artifacts_by_kind(&run_id, ArtifactKind::CompressedFastq).expect("artifacts");
         assert_eq!(compressed.len(), 1);
         assert_eq!(compressed[0].validation_state, ArtifactValidationState::Valid);
-        assert_eq!(compressed[0].sha256.as_ref().map(String::len), Some(64));
+        let persisted_hash = compressed[0].sha256.as_deref().expect("compressed SHA-256");
+        assert_eq!(persisted_hash.len(), 64);
+
+        let manifest_line = manifest_text.lines().next().expect("manifest line");
+        let (manifest_hash, manifest_name) = manifest_line
+            .split_once("  ")
+            .expect("standard SHA256SUMS line");
+        assert_eq!(manifest_hash, persisted_hash);
+        assert_eq!(manifest_name, "SRR000001.fastq.gz");
+
+        let actual_hash = match sha256_file(&result.compressed_paths[0], &StopToken::default())
+            .expect("rehash compressed FASTQ")
+        {
+            HashOutcome::Complete(hash) => hash,
+            HashOutcome::Stopped => panic!("unexpected stop"),
+        };
+        assert_eq!(actual_hash, persisted_hash);
+
+        let checksum_artifacts =
+            store.list_artifacts_by_kind(&run_id, ArtifactKind::Checksum).expect("checksum");
+        assert_eq!(checksum_artifacts.len(), 1);
+        assert_eq!(
+            checksum_artifacts[0].validation_state,
+            ArtifactValidationState::Valid
+        );
+        assert_eq!(checksum_artifacts[0].path, manifest.to_string_lossy());
+        assert_eq!(checksum_artifacts[0].sha256.as_ref().map(String::len), Some(64));
 
         fs::remove_dir_all(root).expect("cleanup");
     }
