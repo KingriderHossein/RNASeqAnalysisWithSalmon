@@ -305,7 +305,8 @@ fn split_prefix_digits(value: &str) -> Option<(&str, &str)> {
     if value.len() < 4 {
         return None;
     }
-    let (prefix, digits) = value.split_at(3);
+    let prefix = value.get(..3)?;
+    let digits = value.get(3..)?;
     Some((prefix, digits))
 }
 
@@ -354,6 +355,10 @@ mod tests {
         ));
         assert!(matches!(
             Accession::parse("XYZ12345"),
+            Err(InputError::InvalidAccession(_))
+        ));
+        assert!(matches!(
+            Accession::parse("éRR12345"),
             Err(InputError::InvalidAccession(_))
         ));
     }
