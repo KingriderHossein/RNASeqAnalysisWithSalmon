@@ -1558,7 +1558,8 @@ mod tests {
 
         // Recreate the actual application restart boundary using a new SQLite connection.
         drop(store);
-        let mut store = StateStore::open(root.join("state.sqlite")).expect("reopen persisted state");
+        let mut store =
+            StateStore::open(root.join("state.sqlite")).expect("reopen persisted state");
         assert_eq!(
             store.get_run(&run_id).expect("run").expect("found").state,
             RunState::Compressing
