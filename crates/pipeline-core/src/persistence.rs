@@ -446,12 +446,20 @@ impl StateStore {
     }
 
     pub fn list_recoverable_jobs(&self) -> Result<Vec<JobRecord>, StoreError> {
-        let mut statement = self.connection.prepare(
+        self.list_jobs_query(
             "SELECT job_id
              FROM jobs
              WHERE overall_state NOT IN ('COMPLETE', 'CANCELLED')
              ORDER BY created_at, job_id",
-        )?;
+        )
+    }
+
+    pub fn list_jobs(&self) -> Result<Vec<JobRecord>, StoreError> {
+        self.list_jobs_query("SELECT job_id FROM jobs ORDER BY created_at, job_id")
+    }
+
+    fn list_jobs_query(&self, query: &str) -> Result<Vec<JobRecord>, StoreError> {
+        let mut statement = self.connection.prepare(query)?;
         let ids = statement
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;

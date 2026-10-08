@@ -326,6 +326,11 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
         let outcome = match self.runner.run(&plan.command, &context, stop) {
             Ok(outcome) => outcome,
             Err(error) => {
+                if error.may_have_live_child() {
+                    // The tool may still own staging/temp files. Neither clean
+                    // them nor change CONVERTING into a retryable FAILED state.
+                    return Err(ConversionError::Process(error));
+                }
                 let conversion_error = ConversionError::Process(error);
                 let cleanup = cleanup_attempt_directories(&staging_directory, &temp_directory);
                 let reason = append_cleanup_warning(conversion_error.to_string(), cleanup);

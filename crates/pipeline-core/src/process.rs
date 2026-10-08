@@ -248,6 +248,13 @@ impl std::error::Error for ProcessError {
     }
 }
 
+impl ProcessError {
+    /// A wait/kill error does not prove the previously spawned child exited.
+    pub fn may_have_live_child(&self) -> bool {
+        matches!(self, Self::Wait { .. } | Self::Kill { .. })
+    }
+}
+
 fn create_log_file(path: &Path) -> Result<std::fs::File, ProcessError> {
     OpenOptions::new()
         .write(true)

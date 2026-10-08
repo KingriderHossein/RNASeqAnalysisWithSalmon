@@ -66,3 +66,24 @@ network retry is disabled rather than inferred from every nonzero exit.
 This refines implementation mechanics without changing the scientific gates or
 the parent's full resumability/network-recovery requirements. Details and current
 limits: [Module A CLI](MODULE-A-CLI.md).
+
+## Module A desktop bridge — v0.1.4
+
+The Tauri window owns a presentation/session adapter, not another workflow
+engine. It reserves one worker before thread creation and uses the same core
+coordinator, database lock and output leases as the CLI. Commands/events expose
+current activity separately from the last persisted checkpoint. Decimal-string
+byte counts and monotonic revisions prevent integer loss and stale command
+responses replacing newer events; an unknown validated total has no percentage.
+
+Pause/Cancel remain durable stage-boundary intents. Idle cancellation uses the
+core cancellation operation without requiring installed SRA tools. Closing a
+window with an active worker is prevented until the user requests a safe stop.
+An uncertain child lifetime preserves its in-flight state and conversion staging
+files; it must not become a retryable failure or trigger destructive cleanup.
+The frontend has a fixed command allowlist and no general shell/filesystem API.
+Control targets must match the persisted job identity; preexisting control-directory
+symlinks are rejected before request/output writes.
+Storage estimates stay unknown unless supported; a user recommendation warns
+without disabling job creation/start. See [Module A desktop](MODULE-A-DESKTOP.md).
+

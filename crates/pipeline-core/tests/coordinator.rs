@@ -77,6 +77,7 @@ fn planner() -> SraToolkitPlanner {
 struct FakeRunner {
     seen: Mutex<Vec<String>>,
     fail_once: Mutex<Option<String>>,
+    wait_on: Option<String>,
 }
 
 impl CommandRunner for FakeRunner {
@@ -120,6 +121,12 @@ impl CommandRunner for FakeRunner {
             )
             .unwrap();
         }
+        if self.wait_on.as_deref() == Some(program) {
+            return Err(ProcessError::Wait {
+                program: spec.program.clone(),
+                source: std::io::Error::other("synthetic unknown child lifetime"),
+            });
+        }
         Ok(CommandOutcome {
             exit_code: Some(if success { 0 } else { 7 }),
             success,
@@ -132,6 +139,75 @@ impl CommandRunner for FakeRunner {
                 .join(format!("{}.stderr.log", context.log_prefix)),
         })
     }
+}
+
+#[test]
+fn uncertain_child_lifetime_preserves_checkpoint_and_conversion_files() {
+    for (program, expected) in [
+        ("prefetch", RunState::Downloading),
+        ("vdb-validate", RunState::Validating),
+        ("fasterq-dump", RunState::Converting),
+    ] {
+        let (f, mut store) = fixture(&["SRR900001"]);
+        let planner = planner();
+        let runner = FakeRunner {
+            wait_on: Some(program.into()),
+            ..FakeRunner::default()
+        };
+        let coordinator = JobCoordinator::new(&planner, &runner);
+        let report = coordinator
+            .drive(&mut store, &f.id, DriveMode::Start, |_| {})
+            .unwrap();
+        assert_eq!(report.state, JobState::Failed);
+        assert_eq!(report.runs[0].state, expected);
+        assert!(report.errors[0]
+            .1
+            .contains("synthetic unknown child lifetime"));
+        let before = runner.seen.lock().unwrap().len();
+        let attempts = report.runs[0].attempt_count;
+        if program == "fasterq-dump" {
+            let staging = f.job_root.join(format!(
+                "fastq/.partial/SRR900001-attempt-{attempts}/SRR900001.fastq"
+            ));
+            let temp = f
+                .job_root
+                .join(format!("temp/SRR900001-attempt-{attempts}"));
+            assert!(staging.is_file());
+            assert!(temp.is_dir());
+        }
+        let retry = coordinator
+            .drive(&mut store, &f.id, DriveMode::Retry, |_| {})
+            .unwrap();
+        assert_eq!(retry.runs[0], report.runs[0]);
+        assert!(retry.errors[0]
+            .1
+            .contains("Process-lifetime reconciliation"));
+        assert_eq!(runner.seen.lock().unwrap().len(), before);
+        drop(store);
+    }
+}
+
+#[test]
+fn idle_cancel_keeps_ambiguous_runs_and_completed_siblings() {
+    use pipeline_core::coordinator::cancel_job;
+    let (f, mut store) = fixture(&["SRR900001", "SRR900002", "SRR900003"]);
+    let runs = store.list_job_runs(&f.id).unwrap();
+    store
+        .transition_run(&runs[0].id, RunState::Downloading, Some("prefetch"), None)
+        .unwrap();
+    let preserved = f.job_root.join("user-evidence");
+    fs::write(&preserved, b"keep").unwrap();
+    let report = cancel_job(&mut store, &f.id, |_| {}).unwrap();
+    assert_eq!(report.state, JobState::Failed);
+    assert_eq!(report.runs[0].state, RunState::Downloading);
+    assert_eq!(report.runs[1].state, RunState::Cancelled);
+    assert_eq!(report.runs[2].state, RunState::Cancelled);
+    assert_eq!(fs::read(preserved).unwrap(), b"keep");
+    assert_eq!(
+        JobControl::open(&f.job_root).unwrap().intent().unwrap(),
+        ControlIntent::Cancel
+    );
+    drop(store);
 }
 
 #[test]
@@ -555,6 +631,26 @@ fn resume_preserves_a_preexisting_control_symlink() {
     assert_eq!(fs::read_link(link).unwrap(), target);
     assert_eq!(fs::read(target).unwrap(), b"keep original");
     assert_eq!(store.list_job_runs(&f.id).unwrap(), before);
+    assert!(runner.seen.lock().unwrap().is_empty());
+    drop(store);
+}
+
+#[test]
+#[cfg(unix)]
+fn control_directory_symlink_never_receives_requests_or_output_writes() {
+    let (f, mut store) = fixture(&["SRR900001"]);
+    let unrelated = f.root.join("unrelated-control");
+    fs::create_dir(&unrelated).unwrap();
+    fs::remove_dir(f.job_root.join("control")).unwrap();
+    std::os::unix::fs::symlink(&unrelated, f.job_root.join("control")).unwrap();
+    assert!(JobControl::open(&f.job_root).is_err());
+    let planner = planner();
+    let runner = FakeRunner::default();
+    assert!(JobCoordinator::new(&planner, &runner)
+        .drive(&mut store, &f.id, DriveMode::Start, |_| {})
+        .is_err());
+    assert!(!f.job_root.join("sra").exists());
+    assert_eq!(fs::read_dir(unrelated).unwrap().count(), 0);
     assert!(runner.seen.lock().unwrap().is_empty());
     drop(store);
 }

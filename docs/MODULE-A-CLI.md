@@ -1,4 +1,4 @@
-# Module A coordinator and CLI — v0.1.3
+# Module A coordinator and CLI — v0.1.4
 
 This is an engineering implementation for resolved SRR/ERR/DRR accessions. It
 does not authorize execution of the accepted raw cohort or any downstream
@@ -6,7 +6,7 @@ scientific module. CI uses synthetic tool runners, never SRA downloads.
 
 ## Commands
 
-Build with Rust 1.89 or newer: `cargo build --workspace`.
+Build with Rust 1.89 or newer: `cargo build --locked --workspace`.
 
 ```text
 rnaseq-pipeline --help
@@ -69,6 +69,9 @@ finishes before control is applied: acquisition includes prefetch and validation
 as one boundary, conversion is another, and finalization another. Outputs and
 attempt-specific logs are retained. Complete siblings never restart or lose
 their artifacts when another run fails, pauses, retries or cancels.
+For an idle queued job, invoke Start/Resume after Cancel to apply the durable
+request through the core cancellation operation; this requires no SRA tools.
+The desktop applies idle cancellation immediately through that same operation.
 
 The current system runner can kill a direct child but does not prove that every
 descendant is dead. The coordinator therefore does not use asynchronous tool
@@ -88,8 +91,9 @@ Core clients receive typed run snapshots, errors, controls and job completion
 events. Progress reports observed bytes at persisted stage boundaries. It does
 not invent a percentage: validated total bytes remain unknown until resolution
 supplies a validated source-size contract. The CLI currently prints these
-events as text; streaming per-byte progress and a desktop event bridge remain
-later work. Exit codes: 0 complete/command accepted, 1 failed job, 2 command/tool/
+events as text; streaming per-byte progress remains later work. The Tauri desktop
+now presents the same core events; see [Module A desktop](MODULE-A-DESKTOP.md).
+Exit codes: 0 complete/command accepted, 1 failed job, 2 command/tool/
 ownership error, 3 paused job, 4 cancelled job.
 
 ## Validation boundary

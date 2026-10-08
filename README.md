@@ -53,6 +53,7 @@ The primary project is therefore a **whole-transcriptome expression reanalysis**
 | [VALIDATION](docs/VALIDATION.md) | Gates and rejection rules |
 | [GOVERNANCE](docs/GOVERNANCE.md) | GitHub workflow and change control |
 | [Module A CLI](docs/MODULE-A-CLI.md) | Shared coordinator commands and supported recovery boundaries |
+| [Module A desktop](docs/MODULE-A-DESKTOP.md) | Tauri bridge, local UI, build and native validation boundaries |
 | [Metadata provenance](metadata/README.md) | Sample/cohort provenance |
 | [AGENTS](AGENTS.md) | Mandatory implementation rules |
 
@@ -140,7 +141,10 @@ Nikitina AS et al. *Novel RNA biomarkers of prostate cancer revealed by RNA-seq 
 
 **Architecture v2.0 is the frozen execution baseline.**
 
-Module A core and CLI v0.1.3 support persisted resolved-run batches with shared
-ownership and safe stage-boundary controls. Desktop wiring, full process-tree
-recovery and automatic network backoff remain unfinished. Validation uses
-synthetic fixtures; accepted-cohort raw execution remains gated.
+Module A core, CLI and Tauri desktop v0.1.4 share persisted resolved-run batches,
+output ownership and safe stage-boundary controls. The desktop has job creation,
+saved checkpoints, bounded logs and warn-only workspace guidance. Full
+process-tree recovery, study/URL resolution and automatic network backoff remain
+unfinished. See the desktop document for exact validation evidence; accepted-
+cohort raw execution and release acceptance remain gated.
+

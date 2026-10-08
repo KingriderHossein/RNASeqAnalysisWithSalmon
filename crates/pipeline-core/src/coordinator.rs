@@ -76,8 +76,25 @@ impl JobControl {
         {
             return Err(JobError::Invalid("not a Module A job destination".into()));
         }
-        let directory = fs::canonicalize(job_root.join("control"))?;
+        let control = job_root.join("control");
+        if !fs::symlink_metadata(&control)?.file_type().is_dir() {
+            return Err(JobError::Invalid(
+                "control directory must be a real directory, not a symlink".into(),
+            ));
+        }
+        let directory = fs::canonicalize(control)?;
         Ok(Self { directory })
+    }
+
+    pub fn open_for_job(job_root: impl AsRef<Path>, id: &JobId) -> Result<Self, JobError> {
+        let job_root = job_root.as_ref();
+        let control = Self::open(job_root)?;
+        if fs::read(job_root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
+            return Err(JobError::Invalid(
+                "job destination identity does not match the database".into(),
+            ));
+        }
+        Ok(control)
     }
 
     pub fn request(&self, intent: ControlIntent) -> Result<(), JobError> {
@@ -156,6 +173,10 @@ pub enum DriveMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobEvent {
+    StageStarting {
+        run_id: RunId,
+        stage: JobStage,
+    },
     RunSnapshot {
         run: RunRecord,
         progress: ByteProgress,
@@ -194,6 +215,77 @@ pub fn terminal_job_report(store: &StateStore, id: &JobId) -> Result<Option<JobR
         return finish(store, id, Vec::new(), &mut |_| {}).map(Some);
     }
     Ok(None)
+}
+
+/// Idle cancellation needs no tool discovery. Ambiguous process checkpoints
+/// stay unchanged; cancelling other safe runs never claims those tools exited.
+pub fn cancel_job(
+    store: &mut StateStore,
+    id: &JobId,
+    mut emit: impl FnMut(JobEvent),
+) -> Result<JobReport, JobError> {
+    let job = store
+        .get_job(id)?
+        .ok_or_else(|| JobError::Invalid(format!("job not found: {id}")))?;
+    let runs = store.list_job_runs(id)?;
+    validate_plan(&job, &runs)?;
+    if runs.iter().all(|run| run.state.is_terminal()) {
+        return finish(store, id, Vec::new(), &mut emit);
+    }
+    let root = Path::new(&job.output_root);
+    let control = JobControl::open_for_job(root, id)?;
+    let _ownership = acquire_job_outputs(&job)?;
+    control.request(ControlIntent::Cancel)?;
+    let mut errors = Vec::new();
+    for run in runs {
+        if run.state.is_terminal() {
+            snapshot(&run, &mut emit);
+            continue;
+        }
+        match cancel_run_at_boundary(store, &run) {
+            Ok(cancelled) => snapshot(&cancelled, &mut emit),
+            Err(error) => {
+                let message = error.to_string();
+                emit(JobEvent::RunError {
+                    run_id: run.id.clone(),
+                    message: message.clone(),
+                });
+                errors.push((run.id, message));
+            }
+        }
+    }
+    finish(store, id, errors, &mut emit)
+}
+
+fn acquire_job_outputs(job: &JobRecord) -> Result<OutputOwnership, JobError> {
+    let root = Path::new(&job.output_root);
+    Ok(OutputOwnership::acquire(&[
+        root,
+        &root.join("sra"),
+        &root.join("fastq"),
+        &root.join("temp"),
+        &root.join("logs"),
+    ])?)
+}
+
+fn ensure_safe_checkpoint(run: &RunRecord) -> Result<(), JobError> {
+    if matches!(
+        run.state,
+        RunState::Downloading | RunState::Validating | RunState::Converting
+    ) {
+        return Err(JobError::Stage(format!("{} is {}; automatic recovery is blocked because a previous tool/descendant may still write. Do not reset state or remove lock files. Process-lifetime reconciliation is required", run.id, run.state)));
+    }
+    Ok(())
+}
+
+fn cancel_run_at_boundary(store: &mut StateStore, run: &RunRecord) -> Result<RunRecord, JobError> {
+    ensure_safe_checkpoint(run)?;
+    Ok(store.transition_run(
+        &run.id,
+        RunState::Cancelled,
+        run.last_checkpoint.as_deref(),
+        None,
+    )?)
 }
 
 pub fn create_job(
@@ -303,19 +395,8 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
             threads,
         );
         // Same lease stays live between stages and across the entire batch.
-        let ownership = OutputOwnership::acquire(&[
-            root,
-            &sra,
-            &request.fastq_root,
-            &request.temp_root,
-            &request.log_root,
-        ])?;
-        let control = JobControl::open(root)?;
-        if fs::read(root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
-            return Err(JobError::Invalid(
-                "job destination identity does not match the database".into(),
-            ));
-        }
+        let control = JobControl::open_for_job(root, id)?;
+        let ownership = acquire_job_outputs(&job)?;
         let tools =
             json!(ToolKind::SRA_REQUIRED.iter().map(|kind| {
             let tool = self.planner.tools().tool(*kind);
@@ -386,21 +467,11 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
             if run.state.is_terminal() {
                 return Ok(());
             }
-            if matches!(
-                run.state,
-                RunState::Downloading | RunState::Validating | RunState::Converting
-            ) {
-                return Err(JobError::Stage(format!("{} is {}; automatic recovery is blocked because a previous tool/descendant may still write. Do not reset state or remove lock files. Process-lifetime reconciliation is required", id, run.state)));
-            }
+            ensure_safe_checkpoint(&run)?;
             match control.intent()? {
                 ControlIntent::Pause => return Ok(()),
                 ControlIntent::Cancel => {
-                    store.transition_run(
-                        id,
-                        RunState::Cancelled,
-                        run.last_checkpoint.as_deref(),
-                        None,
-                    )?;
+                    cancel_run_at_boundary(store, &run)?;
                     emit(JobEvent::ControlApplied(ControlIntent::Cancel));
                     continue;
                 }
@@ -415,20 +486,25 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
             // Do not asynchronously kill external tools: existing SystemCommandRunner
             // only proves direct-child termination, not a whole descendant tree.
             let stop = StopToken::default();
-            match dispatch(&run)? {
-                Stage::Acquisition => {
+            let stage = dispatch(&run)?;
+            emit(JobEvent::StageStarting {
+                run_id: id.clone(),
+                stage,
+            });
+            match stage {
+                JobStage::Acquisition => {
                     SraAcquisitionExecutor::new(self.planner, self.runner)
                         .with_ownership(ownership)
                         .execute_to_sra_valid(store, id, sra_root, &request.log_root, &stop)
                         .map_err(|error| JobError::Stage(error.to_string()))?;
                 }
-                Stage::Conversion => {
+                JobStage::Conversion => {
                     FasterqConversionExecutor::new(self.planner, self.runner)
                         .with_ownership(ownership)
                         .execute_to_fastq_ready(store, id, request, &stop)
                         .map_err(|error| JobError::Stage(error.to_string()))?;
                 }
-                Stage::Finalization => {
+                JobStage::Finalization => {
                     FastqFinalizationExecutor
                         .execute_with_ownership(store, id, &stop, Some(ownership))
                         .map_err(|error| JobError::Stage(error.to_string()))?;
@@ -446,27 +522,28 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
     }
 }
 
-enum Stage {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobStage {
     Acquisition,
     Conversion,
     Finalization,
 }
 
-fn dispatch(run: &RunRecord) -> Result<Stage, JobError> {
+fn dispatch(run: &RunRecord) -> Result<JobStage, JobError> {
     match run.state {
         RunState::Ready | RunState::Paused | RunState::WaitingForNetwork | RunState::Downloaded => {
-            Ok(Stage::Acquisition)
+            Ok(JobStage::Acquisition)
         }
-        RunState::SraValid => Ok(Stage::Conversion),
+        RunState::SraValid => Ok(JobStage::Conversion),
         RunState::FastqReady | RunState::Compressing | RunState::Checksumming => {
-            Ok(Stage::Finalization)
+            Ok(JobStage::Finalization)
         }
         RunState::Failed | RunState::PausedAtBoundary => match run.last_checkpoint.as_deref() {
             Some("prefetch" | "vdb-validate") if run.state == RunState::Failed => {
-                Ok(Stage::Acquisition)
+                Ok(JobStage::Acquisition)
             }
-            Some("fasterq-dump") => Ok(Stage::Conversion),
-            Some("gzip" | "sha256") => Ok(Stage::Finalization),
+            Some("fasterq-dump") => Ok(JobStage::Conversion),
+            Some("gzip" | "sha256") => Ok(JobStage::Finalization),
             _ => Err(JobError::Invalid(
                 "unknown persisted stage; no automatic reset is allowed".into(),
             )),
