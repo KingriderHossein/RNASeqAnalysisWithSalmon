@@ -251,8 +251,8 @@ pub struct StateStore {
 
 impl StateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        let (lock, path) = ExclusivePathLock::database(path.as_ref())
-            .map_err(StoreError::Ownership)?;
+        let (lock, path) =
+            ExclusivePathLock::database(path.as_ref()).map_err(StoreError::Ownership)?;
         let mut connection = Connection::open(path)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
@@ -1147,4 +1147,3 @@ mod tests {
             .is_empty());
     }
 }
-

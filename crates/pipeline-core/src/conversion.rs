@@ -214,8 +214,7 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
         if let Some(parent) = Path::new(sra_path).parent() {
             roots.push(parent);
         }
-        let _ownership = OutputOwnership::acquire(&roots)
-            .map_err(ConversionError::Ownership)?;
+        let _ownership = OutputOwnership::acquire(&roots).map_err(ConversionError::Ownership)?;
         let final_directory = fastq_root.join(accession.as_str());
 
         if fs::symlink_metadata(&final_directory).is_ok() {
@@ -1124,4 +1123,3 @@ mod tests {
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
-

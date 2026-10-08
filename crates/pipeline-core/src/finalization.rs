@@ -193,8 +193,7 @@ impl FastqFinalizationExecutor {
         let parent = validate_fastq_inputs(&paths)?;
         // Conversion owns the FASTQ root; finalization must use the same marker.
         let root = parent.parent().unwrap_or(&parent);
-        let _ownership = OutputOwnership::acquire(&[root])
-            .map_err(FinalizationError::Ownership)?;
+        let _ownership = OutputOwnership::acquire(&[root]).map_err(FinalizationError::Ownership)?;
 
         match current.state {
             RunState::FastqReady => self.run_compression(store, current, stop, false),
@@ -1895,11 +1894,18 @@ mod tests {
         let fastq_root = root.join("fastq");
         let holder = OutputOwnership::acquire(&[&fastq_root]).unwrap();
         assert!(matches!(
-            FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &StopToken::default()),
+            FastqFinalizationExecutor.execute_to_complete(
+                &mut store,
+                &run_id,
+                &StopToken::default()
+            ),
             Err(FinalizationError::Ownership(OwnershipError::Busy { .. }))
         ));
         assert_eq!(store.get_run(&run_id).unwrap().unwrap(), before);
-        assert_eq!(fs::read(fastq_root.join("SRR000001/SRR000001.fastq")).unwrap(), original);
+        assert_eq!(
+            fs::read(fastq_root.join("SRR000001/SRR000001.fastq")).unwrap(),
+            original
+        );
         drop(holder);
         let result = FastqFinalizationExecutor
             .execute_to_complete(&mut store, &run_id, &StopToken::default())
@@ -1909,4 +1915,3 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
-

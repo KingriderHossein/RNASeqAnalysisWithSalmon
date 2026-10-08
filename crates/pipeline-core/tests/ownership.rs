@@ -13,7 +13,10 @@ struct Fixture(PathBuf);
 
 impl Fixture {
     fn new(label: &str) -> Self {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let root = std::env::temp_dir().join(format!(
             "rnaseq-ownership-{label}-{}-{nonce}",
             std::process::id()
@@ -56,7 +59,11 @@ fn child(root: &Path, mode: &str, id: &str) -> ChildGuard {
 fn wait_file(path: &Path) {
     let start = Instant::now();
     while !path.exists() {
-        assert!(start.elapsed() < Duration::from_secs(15), "timeout: {}", path.display());
+        assert!(
+            start.elapsed() < Duration::from_secs(15),
+            "timeout: {}",
+            path.display()
+        );
         thread::sleep(Duration::from_millis(10));
     }
 }
@@ -135,7 +142,10 @@ fn duplicate_roots_and_directory_aliases_share_ownership() {
     let fixture = Fixture::new("aliases");
     let alias = fixture.0.join(".");
     let guard = OutputOwnership::acquire(&[&fixture.0, &alias]).unwrap();
-    assert!(matches!(OutputOwnership::acquire(&[&alias]), Err(OwnershipError::Busy { .. })));
+    assert!(matches!(
+        OutputOwnership::acquire(&[&alias]),
+        Err(OwnershipError::Busy { .. })
+    ));
     drop(guard);
     OutputOwnership::acquire(&[&alias]).unwrap();
 }
@@ -191,8 +201,14 @@ fn two_uncoordinated_processes_publish_exactly_one_whole_directory() {
     assert_eq!(results.iter().filter(|r| r.as_str() == "won").count(), 1);
     let winner = if results[0] == "won" { "one" } else { "two" };
     let loser = if winner == "one" { "two" } else { "one" };
-    assert_eq!(fs::read_to_string(fixture.0.join("final/synthetic")).unwrap(), winner);
-    assert_eq!(fs::read_to_string(fixture.0.join(format!("stage-{loser}/synthetic"))).unwrap(), loser);
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("final/synthetic")).unwrap(),
+        winner
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.0.join(format!("stage-{loser}/synthetic"))).unwrap(),
+        loser
+    );
 }
 
 #[cfg(unix)]
@@ -205,8 +221,18 @@ fn dangling_destination_and_lock_symlinks_are_preserved() {
     fs::create_dir(&source).unwrap();
     symlink(fixture.0.join("missing"), &destination).unwrap();
     assert!(pipeline_core::ownership::publish_noreplace(&source, &destination).is_err());
-    assert!(fs::symlink_metadata(&destination).unwrap().file_type().is_symlink());
-    symlink(fixture.0.join("other-missing"), fixture.0.join(".pipeline-owner.lock")).unwrap();
-    assert!(matches!(OutputOwnership::acquire(&[&fixture.0]), Err(OwnershipError::Io { .. })));
+    assert!(fs::symlink_metadata(&destination)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    symlink(
+        fixture.0.join("other-missing"),
+        fixture.0.join(".pipeline-owner.lock"),
+    )
+    .unwrap();
+    assert!(matches!(
+        OutputOwnership::acquire(&[&fixture.0]),
+        Err(OwnershipError::Io { .. })
+    ));
     assert!(!fixture.0.join("other-missing").exists());
 }

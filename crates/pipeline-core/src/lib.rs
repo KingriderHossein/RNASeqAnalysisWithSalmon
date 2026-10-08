@@ -47,5 +47,4 @@ pub use process::{
 pub use sra::{FasterqPlan, PrefetchPlan, SraPlanError, SraToolkitPlanner, ValidationPlan};
 pub use tool::{discover_tool, probe_version, ToolError, ToolInfo, ToolKind, ToolRegistry};
 
-
 pub use ownership::{OutputOwnership, OwnershipError};

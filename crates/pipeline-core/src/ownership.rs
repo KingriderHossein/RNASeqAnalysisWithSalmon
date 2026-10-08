@@ -21,7 +21,11 @@ impl fmt::Display for OwnershipError {
                 path.display()
             ),
             Self::Io { path, source } => {
-                write!(f, "cannot acquire ownership of {}: {source}", path.display())
+                write!(
+                    f,
+                    "cannot acquire ownership of {}: {source}",
+                    path.display()
+                )
             }
         }
     }
@@ -87,10 +91,13 @@ impl ExclusivePathLock {
             Ok(path) => path,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
-                let parent = fs::canonicalize(parent.unwrap_or_else(|| Path::new(".")))
-                    .map_err(io_error)?;
+                let parent =
+                    fs::canonicalize(parent.unwrap_or_else(|| Path::new("."))).map_err(io_error)?;
                 let name = path.file_name().ok_or_else(|| {
-                    io_error(io::Error::new(io::ErrorKind::InvalidInput, "invalid database path"))
+                    io_error(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid database path",
+                    ))
                 })?;
                 parent.join(name)
             }
@@ -124,7 +131,9 @@ impl OutputOwnership {
         paths.dedup();
         let mut locks = Vec::with_capacity(paths.len());
         for path in paths {
-            locks.push(ExclusivePathLock::acquire(&path.join(".pipeline-owner.lock"))?);
+            locks.push(ExclusivePathLock::acquire(
+                &path.join(".pipeline-owner.lock"),
+            )?);
         }
         Ok(Self { _locks: locks })
     }
@@ -150,7 +159,10 @@ pub fn publish_noreplace(source: &Path, destination: &Path) -> io::Result<()> {
         fn wide(path: &Path) -> io::Result<Vec<u16>> {
             let mut bytes: Vec<u16> = path.as_os_str().encode_wide().collect();
             if bytes.contains(&0) {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "path contains NUL",
+                ));
             }
             bytes.push(0);
             Ok(bytes)

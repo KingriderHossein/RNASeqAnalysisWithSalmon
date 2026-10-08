@@ -191,11 +191,14 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
         }
 
         let mut roots = vec![output_root.as_ref(), log_root.as_ref()];
-        if let Some(parent) = current.sra_path.as_deref().and_then(|p| Path::new(p).parent()) {
+        if let Some(parent) = current
+            .sra_path
+            .as_deref()
+            .and_then(|p| Path::new(p).parent())
+        {
             roots.push(parent);
         }
-        let _ownership = OutputOwnership::acquire(&roots)
-            .map_err(AcquisitionError::Ownership)?;
+        let _ownership = OutputOwnership::acquire(&roots).map_err(AcquisitionError::Ownership)?;
 
         let accession = Accession::parse(&current.accession_or_source)?;
 
@@ -1027,4 +1030,3 @@ mod tests {
         assert_eq!(spec.args, vec![OsString::from("arg")]);
     }
 }
-
