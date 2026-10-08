@@ -156,8 +156,12 @@ A merged PR is not project completion.
 
 Project completion requires all criteria in the project specification, architecture and validation/reproducibility closure.
 
-## Current architecture-phase boundary
+## Current execution phase
 
-Architecture finalization includes documentation, project structure and work-item design only.
+Architecture v2.0 and the Module A Download Manager execution contract are accepted.
 
-It excludes raw download, index construction, quantification and DE analysis.
+Current authorized engineering phase: **Module A implementation**.
+
+This permits Rust/Tauri scaffolding, the shared core, CLI/GUI integration, persisted state/recovery behavior, storage checks, tool adapters, tests, and packaging work for the Download Manager.
+
+Actual accepted-project raw-data acquisition and downstream scientific execution remain controlled by their Issues and validation gates. Reference/index construction, Salmon quantification, tximport, DESeq2 and downstream analysis are not implicitly authorized by this phase transition.
