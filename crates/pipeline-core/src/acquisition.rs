@@ -202,10 +202,12 @@ impl<'a, R: CommandRunner> SraAcquisitionExecutor<'a, R> {
                     store,
                     run_id,
                     &accession,
-                    attempt,
                     plan,
-                    log_root.as_ref(),
-                    stop,
+                    AttemptContext {
+                        attempt,
+                        log_root: log_root.as_ref(),
+                        stop,
+                    },
                 )
             }
             RunState::Downloaded => {
