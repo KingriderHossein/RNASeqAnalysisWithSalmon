@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RunState {
@@ -111,6 +111,92 @@ impl fmt::Display for RunState {
     }
 }
 
+impl FromStr for RunState {
+    type Err = StateParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "QUEUED" => Ok(Self::Queued),
+            "RESOLVING" => Ok(Self::Resolving),
+            "READY" => Ok(Self::Ready),
+            "DOWNLOADING" => Ok(Self::Downloading),
+            "PAUSED" => Ok(Self::Paused),
+            "WAITING_FOR_NETWORK" => Ok(Self::WaitingForNetwork),
+            "DOWNLOADED" => Ok(Self::Downloaded),
+            "VALIDATING" => Ok(Self::Validating),
+            "SRA_VALID" => Ok(Self::SraValid),
+            "CONVERTING" => Ok(Self::Converting),
+            "PAUSED_AT_BOUNDARY" => Ok(Self::PausedAtBoundary),
+            "FASTQ_READY" => Ok(Self::FastqReady),
+            "COMPRESSING" => Ok(Self::Compressing),
+            "CHECKSUMMING" => Ok(Self::Checksumming),
+            "COMPLETE" => Ok(Self::Complete),
+            "FAILED" => Ok(Self::Failed),
+            "CANCELLED" => Ok(Self::Cancelled),
+            other => Err(StateParseError::new("run", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum JobState {
+    Queued,
+    Active,
+    Paused,
+    WaitingForNetwork,
+    Complete,
+    Failed,
+    Cancelled,
+}
+
+impl JobState {
+    pub const ALL: [Self; 7] = [
+        Self::Queued,
+        Self::Active,
+        Self::Paused,
+        Self::WaitingForNetwork,
+        Self::Complete,
+        Self::Failed,
+        Self::Cancelled,
+    ];
+
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Complete | Self::Cancelled)
+    }
+}
+
+impl fmt::Display for JobState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Queued => "QUEUED",
+            Self::Active => "ACTIVE",
+            Self::Paused => "PAUSED",
+            Self::WaitingForNetwork => "WAITING_FOR_NETWORK",
+            Self::Complete => "COMPLETE",
+            Self::Failed => "FAILED",
+            Self::Cancelled => "CANCELLED",
+        };
+        f.write_str(name)
+    }
+}
+
+impl FromStr for JobState {
+    type Err = StateParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "QUEUED" => Ok(Self::Queued),
+            "ACTIVE" => Ok(Self::Active),
+            "PAUSED" => Ok(Self::Paused),
+            "WAITING_FOR_NETWORK" => Ok(Self::WaitingForNetwork),
+            "COMPLETE" => Ok(Self::Complete),
+            "FAILED" => Ok(Self::Failed),
+            "CANCELLED" => Ok(Self::Cancelled),
+            other => Err(StateParseError::new("job", other)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransitionError {
     pub from: RunState,
@@ -128,6 +214,29 @@ impl fmt::Display for TransitionError {
 }
 
 impl std::error::Error for TransitionError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateParseError {
+    kind: &'static str,
+    value: String,
+}
+
+impl StateParseError {
+    fn new(kind: &'static str, value: impl Into<String>) -> Self {
+        Self {
+            kind,
+            value: value.into(),
+        }
+    }
+}
+
+impl fmt::Display for StateParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown {} state: {}", self.kind, self.value)
+    }
+}
+
+impl std::error::Error for StateParseError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WarningSeverity {
@@ -205,6 +314,16 @@ mod tests {
         }
         assert!(RunState::Complete.is_terminal());
         assert!(RunState::Cancelled.is_terminal());
+    }
+
+    #[test]
+    fn state_names_round_trip() {
+        for state in RunState::ALL {
+            assert_eq!(state.to_string().parse::<RunState>(), Ok(state));
+        }
+        for state in JobState::ALL {
+            assert_eq!(state.to_string().parse::<JobState>(), Ok(state));
+        }
     }
 
     #[test]
