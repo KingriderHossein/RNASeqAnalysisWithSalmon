@@ -93,7 +93,8 @@ impl SraToolkitPlanner {
         &self,
         accession_directory: impl AsRef<Path>,
     ) -> Result<ValidationPlan, SraPlanError> {
-        let accession_directory = checked_path(accession_directory.as_ref(), "accession directory")?;
+        let accession_directory =
+            checked_path(accession_directory.as_ref(), "accession directory")?;
         let command = CommandSpec::new(
             self.tools.tool(ToolKind::VdbValidate).path.clone(),
             vec![accession_directory.as_os_str().to_owned()],
@@ -216,7 +217,10 @@ mod tests {
             .prefetch(&accession, "/data/sra")
             .expect("prefetch plan");
 
-        assert_eq!(plan.accession_directory, PathBuf::from("/data/sra/SRR4453783"));
+        assert_eq!(
+            plan.accession_directory,
+            PathBuf::from("/data/sra/SRR4453783")
+        );
         assert_eq!(
             args_as_strings(&plan.command),
             vec!["SRR4453783", "--max-size", "u", "-O", "/data/sra"]
@@ -246,10 +250,7 @@ mod tests {
             .validate("/data/sra/SRR4453783")
             .expect("validation plan");
 
-        assert_eq!(
-            args_as_strings(&plan.command),
-            vec!["/data/sra/SRR4453783"]
-        );
+        assert_eq!(args_as_strings(&plan.command), vec!["/data/sra/SRR4453783"]);
     }
 
     #[test]
