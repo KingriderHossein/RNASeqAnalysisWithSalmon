@@ -782,10 +782,7 @@ mod tests {
     use super::*;
     use crate::{ArtifactValidationState, JobId, NewJob, NewRun};
     use flate2::read::GzDecoder;
-    use std::{
-        io::Read as _,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(label: &str) -> PathBuf {
         let nonce = SystemTime::now()
