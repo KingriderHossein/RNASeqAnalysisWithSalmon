@@ -1,5 +1,6 @@
 use crate::{
-    ArtifactId, IdError, JobId, JobState, RunId, RunState, StateParseError, TransitionError,
+    ArtifactId, IdError, JobId, JobState, RetryTransitionError, RunId, RunState, StateParseError,
+    TransitionError,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::{
@@ -161,6 +162,7 @@ pub enum StoreError {
     InvalidId(IdError),
     InvalidState(StateParseError),
     InvalidTransition(TransitionError),
+    InvalidRetryTransition(RetryTransitionError),
     InvalidStoredValue { field: &'static str, value: String },
     NotFound { kind: &'static str, id: String },
     UnsupportedSchema(i64),
@@ -173,6 +175,7 @@ impl fmt::Display for StoreError {
             Self::InvalidId(error) => error.fmt(f),
             Self::InvalidState(error) => error.fmt(f),
             Self::InvalidTransition(error) => error.fmt(f),
+            Self::InvalidRetryTransition(error) => error.fmt(f),
             Self::InvalidStoredValue { field, value } => {
                 write!(f, "invalid stored value for {field}: {value}")
             }
@@ -194,6 +197,7 @@ impl std::error::Error for StoreError {
             Self::InvalidId(error) => Some(error),
             Self::InvalidState(error) => Some(error),
             Self::InvalidTransition(error) => Some(error),
+            Self::InvalidRetryTransition(error) => Some(error),
             Self::InvalidStoredValue { .. }
             | Self::NotFound { .. }
             | Self::UnsupportedSchema(_) => None,
@@ -222,6 +226,12 @@ impl From<StateParseError> for StoreError {
 impl From<TransitionError> for StoreError {
     fn from(value: TransitionError) -> Self {
         Self::InvalidTransition(value)
+    }
+}
+
+impl From<RetryTransitionError> for StoreError {
+    fn from(value: RetryTransitionError) -> Self {
+        Self::InvalidRetryTransition(value)
     }
 }
 
@@ -441,6 +451,50 @@ impl StateStore {
                 next.to_string(),
                 last_checkpoint,
                 last_error,
+                unix_timestamp(),
+            ],
+        )?;
+        transaction.commit()?;
+
+        self.get_run(id)?.ok_or_else(|| StoreError::NotFound {
+            kind: "run",
+            id: id.to_string(),
+        })
+    }
+
+    pub fn retry_run(
+        &mut self,
+        id: &RunId,
+        next: RunState,
+        last_checkpoint: Option<&str>,
+    ) -> Result<RunRecord, StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let current = transaction
+            .query_row(
+                "SELECT state FROM runs WHERE run_id = ?1",
+                params![id.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or_else(|| StoreError::NotFound {
+                kind: "run",
+                id: id.to_string(),
+            })?
+            .parse::<RunState>()?;
+
+        current.retry_to(next)?;
+
+        transaction.execute(
+            "UPDATE runs
+             SET state = ?2, last_checkpoint = ?3, updated_at = ?4
+             WHERE run_id = ?1",
+            params![
+                id.as_str(),
+                next.to_string(),
+                last_checkpoint,
                 unix_timestamp(),
             ],
         )?;
@@ -779,6 +833,53 @@ mod tests {
             .expect("read run")
             .expect("run exists");
         assert_eq!(persisted.state, RunState::Queued);
+    }
+
+    #[test]
+    fn retry_transition_requires_failed_state_and_allowed_target() {
+        let mut store = StateStore::open_in_memory().expect("open database");
+        let job = sample_job();
+        let run = sample_run(&job.id);
+        store.create_job(job).expect("create job");
+        store.create_run(run.clone()).expect("create run");
+
+        store
+            .transition_run(&run.id, RunState::Resolving, Some("resolve"), None)
+            .expect("resolving");
+        store
+            .transition_run(
+                &run.id,
+                RunState::Failed,
+                Some("resolve"),
+                Some("resolver failed"),
+            )
+            .expect("failed");
+
+        let retried = store
+            .retry_run(&run.id, RunState::Resolving, Some("retry-resolve"))
+            .expect("retry resolving");
+        assert_eq!(retried.state, RunState::Resolving);
+        assert_eq!(retried.last_error.as_deref(), Some("resolver failed"));
+
+        store
+            .transition_run(
+                &run.id,
+                RunState::Failed,
+                Some("retry-resolve"),
+                Some("failed again"),
+            )
+            .expect("failed again");
+
+        let error = store
+            .retry_run(&run.id, RunState::Complete, None)
+            .expect_err("retry to COMPLETE must fail");
+        assert!(matches!(error, StoreError::InvalidRetryTransition(_)));
+
+        let persisted = store
+            .get_run(&run.id)
+            .expect("read run")
+            .expect("run exists");
+        assert_eq!(persisted.state, RunState::Failed);
     }
 
     #[test]
