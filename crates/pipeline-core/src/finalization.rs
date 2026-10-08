@@ -1147,7 +1147,8 @@ mod tests {
     }
 
     fn fastq_ready_store(root: &Path, files: &[(&str, &[u8])]) -> (StateStore, RunId, PathBuf) {
-        let mut store = StateStore::open_in_memory().expect("store");
+        fs::create_dir_all(root).expect("test fixture root");
+        let mut store = StateStore::open(root.join("state.sqlite")).expect("persistent store");
         let job_id = JobId::new("job-1").expect("job id");
         let run_id = RunId::new("run-1").expect("run id");
         let sra_path = root.join("sra").join("SRR000001");
@@ -1555,6 +1556,13 @@ mod tests {
             )
             .expect("compressing");
 
+        // Recreate the actual application restart boundary using a new SQLite connection.
+        drop(store);
+        let mut store = StateStore::open(root.join("state.sqlite")).expect("reopen persisted state");
+        assert_eq!(
+            store.get_run(&run_id).expect("run").expect("found").state,
+            RunState::Compressing
+        );
         let result = FastqFinalizationExecutor
             .execute_to_complete(&mut store, &run_id, &StopToken::default())
             .expect("recovered");
