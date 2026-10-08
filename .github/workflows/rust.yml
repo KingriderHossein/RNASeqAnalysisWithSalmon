@@ -54,7 +54,7 @@ jobs:
         run: node --test crates/pipeline-desktop/ui/tests/presentation.test.mjs
 
       - name: Resolved dependency checkpoint
-        if: runner.os == 'Linux' && success()
+        if: runner.os == 'Linux' && !cancelled()
         run: |
           echo LOCKFILE_START
           cat Cargo.lock
@@ -82,7 +82,7 @@ jobs:
         run: cargo clippy -p pipeline-desktop --features native --all-targets -- -D warnings
       - name: Native build
         if: ${{ !cancelled() }}
-        run: cargo build -p pipeline-desktop --features native
+        run: cargo build -p pipeline-desktop -p pipeline-cli --features native
       - name: Native Linux WebDriver
         if: runner.os == 'Linux' && success()
         run: |

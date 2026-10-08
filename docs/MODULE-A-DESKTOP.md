@@ -1,7 +1,7 @@
 # Module A desktop — v0.1.4
 
 The Tauri 2 desktop is a thin HTML/CSS/JavaScript view over `pipeline-core`.
-It uses the same SQLite job file and stage coordinator as `rnaseq-download`.
+It uses the same SQLite job file and stage coordinator as `rnaseq-pipeline`.
 This is an engineering preview, not acceptance of raw study data or a release.
 
 ## Run
@@ -88,7 +88,7 @@ CI separately builds and runs native Clippy for Linux, Windows and macOS. Linux
 also runs a real Tauri/WebKitGTK window under Xvfb through `tauri-driver` 2.1.0:
 
 ```sh
-cargo build -p pipeline-desktop --features native
+cargo build -p pipeline-desktop -p pipeline-cli --features native
 cargo install tauri-driver --version 2.1.0 --locked
 xvfb-run node crates/pipeline-desktop/tests/native-smoke.mjs
 ```

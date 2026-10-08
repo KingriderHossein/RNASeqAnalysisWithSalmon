@@ -1,7 +1,7 @@
 // Real Linux Tauri/WebKitGTK window and IPC; synthetic executable tools only.
 // The fixture writes small text/SRA placeholders, never retrieves sequencing data.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, chmod, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, chmod, readFile, rename, access, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join, delimiter } from "node:path";
 import { spawn } from "node:child_process";
@@ -19,7 +19,7 @@ if '--version' in sys.argv or '-V' in sys.argv:
     sys.exit(0)
 args = sys.argv[1:]
 if tool == 'prefetch':
-    time.sleep(1)
+    time.sleep(2)
     accession = args[0]
     root = pathlib.Path(args[args.index('-O') + 1]) / accession
     root.mkdir(parents=True, exist_ok=True)
@@ -87,7 +87,32 @@ try {
   assert.ok(!(await execute("return document.getElementById('run-rows').textContent;")).includes("%"));
   assert.equal(await execute("return document.getElementById('error').hidden;"), true);
   console.log("VISUAL_COMPLETE:" + await request("GET", `/session/${session}/screenshot`));
+
+  // The GUI must surface core contention while another real CLI owns SQLite.
+  await execute(`document.getElementById('job-id').value = 'native-contention';
+    document.getElementById('runs').value = 'DRR900003';
+    document.getElementById('create-form').requestSubmit();`);
+  await until(() => execute("return document.getElementById('job-title').textContent === 'native-contention';"), "second synthetic job");
+  const cli = spawn(resolve("target/debug/rnaseq-pipeline"), ["start", join(workspace, "module-a.sqlite"), "native-contention"], {
+    env: { ...process.env, PATH: tools + delimiter + process.env.PATH }, stdio: ["ignore", "pipe", "pipe"],
+  });
+  const cliExit = new Promise((accept, reject) => { cli.on("error", reject); cli.on("exit", (code) => accept(code)); });
+  let cliLogs = ""; for (const stream of [cli.stdout, cli.stderr]) stream.on("data", (data) => { cliLogs += data; });
+  await until(async () => { try { await access(join(workspace, "native-contention/logs/DRR900003-attempt-1-prefetch.stdout.log")); return true; } catch { return false; } }, "CLI holds job database");
+  await execute("document.getElementById('refresh').click();");
+  await until(() => execute("return !document.getElementById('error').hidden;"), "GUI Busy error");
+  assert.match(await execute("return document.getElementById('error').textContent;"), /owned|busy|lock/i);
+  assert.equal(await cliExit, 0, cliLogs);
+  await execute("document.getElementById('refresh').click();");
+  await until(() => execute("return document.getElementById('job-state').textContent === 'Complete' && document.getElementById('error').hidden;"), "refresh after CLI release");
+  assert.equal(await readFile(manifest, "utf8"), original);
+
+  await rename(join(tools, "prefetch"), join(tools, "prefetch-disabled"));
+  await execute("document.getElementById('check-tools').click();");
+  await until(() => execute("return document.getElementById('tool-details').textContent.includes('Install SRA Toolkit');"), "missing toolkit guidance");
+  await rename(join(tools, "prefetch-disabled"), join(tools, "prefetch"));
   console.log("PASS: real Linux Tauri IPC create/batch/start/pause/resume/complete/refresh; synthetic tools only; checksum retained; unknown totals have no percentage.");
+  console.log("PASS: real CLI ownership produces GUI Busy, Refresh clears the error after release, completed sibling manifest retained, missing toolkit has installation guidance.");
 } catch (error) {
   console.error(diagnostics);
   if (session) { try { console.error(await execute("return document.body.innerText;")); } catch {} }
