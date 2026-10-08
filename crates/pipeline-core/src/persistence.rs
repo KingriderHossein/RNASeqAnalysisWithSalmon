@@ -651,6 +651,125 @@ impl StateStore {
         Ok(())
     }
 
+    pub fn record_finalized_artifacts(
+        &mut self,
+        run_id: &RunId,
+        kind: ArtifactKind,
+        artifacts: &[(ArtifactId, String, i64)],
+    ) -> Result<(), StoreError> {
+        let now = unix_timestamp();
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        for (artifact_id, path, size_bytes) in artifacts {
+            transaction.execute(
+                "INSERT INTO artifacts (
+                    artifact_id, run_id, kind, path, size_bytes, sha256,
+                    validation_state, created_at, finalized_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?7)",
+                params![
+                    artifact_id.as_str(),
+                    run_id.as_str(),
+                    kind.to_string(),
+                    path,
+                    size_bytes,
+                    ArtifactValidationState::Pending.to_string(),
+                    now,
+                ],
+            )?;
+        }
+
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn list_artifacts_by_kind(
+        &self,
+        run_id: &RunId,
+        kind: ArtifactKind,
+    ) -> Result<Vec<ArtifactRecord>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT artifact_id, run_id, kind, path, size_bytes, sha256,
+                    validation_state, created_at, finalized_at
+             FROM artifacts
+             WHERE run_id = ?1 AND kind = ?2
+             ORDER BY artifact_id",
+        )?;
+
+        let mut rows = statement.query(params![run_id.as_str(), kind.to_string()])?;
+        let mut artifacts = Vec::new();
+        while let Some(row) = rows.next()? {
+            artifacts.push(ArtifactRecord {
+                id: ArtifactId::new(row.get::<_, String>(0)?)?,
+                run_id: RunId::new(row.get::<_, String>(1)?)?,
+                kind: row.get::<_, String>(2)?.parse::<ArtifactKind>()?,
+                path: row.get(3)?,
+                size_bytes: row.get(4)?,
+                sha256: row.get(5)?,
+                validation_state: row
+                    .get::<_, String>(6)?
+                    .parse::<ArtifactValidationState>()?,
+                created_at: row.get(7)?,
+                finalized_at: row.get(8)?,
+            });
+        }
+        Ok(artifacts)
+    }
+
+    pub fn record_checksum_results(
+        &mut self,
+        compressed_hashes: &[(ArtifactId, String)],
+        checksum_artifact: &(ArtifactId, RunId, String, i64, String),
+    ) -> Result<(), StoreError> {
+        let now = unix_timestamp();
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        for (artifact_id, sha256) in compressed_hashes {
+            let changed = transaction.execute(
+                "UPDATE artifacts
+                 SET sha256 = ?2, validation_state = ?3, finalized_at = COALESCE(finalized_at, ?4)
+                 WHERE artifact_id = ?1 AND kind = ?5",
+                params![
+                    artifact_id.as_str(),
+                    sha256.as_str(),
+                    ArtifactValidationState::Valid.to_string(),
+                    now,
+                    ArtifactKind::CompressedFastq.to_string(),
+                ],
+            )?;
+
+            if changed == 0 {
+                return Err(StoreError::NotFound {
+                    kind: "compressed FASTQ artifact",
+                    id: artifact_id.to_string(),
+                });
+            }
+        }
+
+        transaction.execute(
+            "INSERT INTO artifacts (
+                artifact_id, run_id, kind, path, size_bytes, sha256,
+                validation_state, created_at, finalized_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+            params![
+                checksum_artifact.0.as_str(),
+                checksum_artifact.1.as_str(),
+                ArtifactKind::Checksum.to_string(),
+                checksum_artifact.2.as_str(),
+                checksum_artifact.3,
+                checksum_artifact.4.as_str(),
+                ArtifactValidationState::Valid.to_string(),
+                now,
+            ],
+        )?;
+
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn create_artifact(&self, artifact: NewArtifact) -> Result<ArtifactRecord, StoreError> {
         let now = unix_timestamp();
         self.connection.execute(

@@ -59,6 +59,7 @@ pub enum ConversionError {
     MissingRun(RunId),
     UnsupportedState(RunState),
     UnknownFailedCheckpoint(Option<String>),
+    UnknownPausedCheckpoint(Option<String>),
     MissingPersistedSraPath,
     FinalOutputExists(PathBuf),
     Io {
@@ -88,6 +89,11 @@ impl fmt::Display for ConversionError {
             Self::UnknownFailedCheckpoint(checkpoint) => write!(
                 f,
                 "cannot determine conversion retry from failed checkpoint {:?}",
+                checkpoint
+            ),
+            Self::UnknownPausedCheckpoint(checkpoint) => write!(
+                f,
+                "cannot determine conversion resume from paused checkpoint {:?}",
                 checkpoint
             ),
             Self::MissingPersistedSraPath => {
@@ -128,6 +134,7 @@ impl std::error::Error for ConversionError {
             Self::MissingRun(_)
             | Self::UnsupportedState(_)
             | Self::UnknownFailedCheckpoint(_)
+            | Self::UnknownPausedCheckpoint(_)
             | Self::MissingPersistedSraPath
             | Self::FinalOutputExists(_)
             | Self::InvalidFastqOutput(_)
@@ -206,7 +213,14 @@ impl<'a, R: CommandRunner> FasterqConversionExecutor<'a, R> {
         }
 
         match current.state {
-            RunState::SraValid | RunState::PausedAtBoundary => {}
+            RunState::SraValid => {}
+            RunState::PausedAtBoundary
+                if current.last_checkpoint.as_deref() == Some(CONVERSION_CHECKPOINT) => {}
+            RunState::PausedAtBoundary => {
+                return Err(ConversionError::UnknownPausedCheckpoint(
+                    current.last_checkpoint.clone(),
+                ));
+            }
             RunState::Failed
                 if current.last_checkpoint.as_deref() == Some(CONVERSION_CHECKPOINT) => {}
             RunState::Failed => {

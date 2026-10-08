@@ -67,10 +67,19 @@ impl RunState {
                     Converting,
                     PausedAtBoundary | FastqReady | Failed | Cancelled
                 )
-                | (PausedAtBoundary, Converting | Cancelled)
+                | (
+                    PausedAtBoundary,
+                    Converting | Compressing | Checksumming | Cancelled
+                )
                 | (FastqReady, Compressing | Checksumming | Failed | Cancelled)
-                | (Compressing, Checksumming | Failed | Cancelled)
-                | (Checksumming, Complete | Failed | Cancelled)
+                | (
+                    Compressing,
+                    PausedAtBoundary | Checksumming | Failed | Cancelled
+                )
+                | (
+                    Checksumming,
+                    PausedAtBoundary | Complete | Failed | Cancelled
+                )
         )
     }
 
@@ -323,9 +332,13 @@ mod tests {
     }
 
     #[test]
-    fn conversion_pause_resumes_from_boundary() {
+    fn safe_boundary_pause_can_resume_stage_specific_work() {
         assert!(RunState::Converting.can_transition_to(RunState::PausedAtBoundary));
+        assert!(RunState::Compressing.can_transition_to(RunState::PausedAtBoundary));
+        assert!(RunState::Checksumming.can_transition_to(RunState::PausedAtBoundary));
         assert!(RunState::PausedAtBoundary.can_transition_to(RunState::Converting));
+        assert!(RunState::PausedAtBoundary.can_transition_to(RunState::Compressing));
+        assert!(RunState::PausedAtBoundary.can_transition_to(RunState::Checksumming));
     }
 
     #[test]
