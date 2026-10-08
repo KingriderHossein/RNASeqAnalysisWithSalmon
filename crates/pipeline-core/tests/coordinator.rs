@@ -8,7 +8,10 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -18,6 +21,8 @@ struct Fixture {
     job_root: PathBuf,
     id: JobId,
 }
+
+static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -30,7 +35,11 @@ fn fixture(accessions: &[&str]) -> (Fixture, StateStore) {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::env::temp_dir().join(format!("module-a-job-{}-{nonce}", std::process::id()));
+    let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "module-a-job-{}-{nonce}-{sequence}",
+        std::process::id()
+    ));
     fs::create_dir(&root).unwrap();
     let db = root.join("state.sqlite");
     let mut store = StateStore::open(&db).unwrap();
