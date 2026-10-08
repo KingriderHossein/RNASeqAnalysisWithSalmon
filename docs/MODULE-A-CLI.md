@@ -26,6 +26,9 @@ The database parent must already exist. Create reserves a new job directory;
 an existing directory, even empty, is rejected. Job IDs contain 1–128 ASCII
 letters/digits, hyphens or underscores. Threads are bounded to 1–256. Study,
 experiment, URL and batch-file resolution are not exposed by this CLI yet.
+An existing database must already have the supported Module A schema; an
+uninitialized or unrelated database is rejected before configuration/migration.
+Inspect/Start/Resume/Retry do not create a missing database.
 
 Create atomically records all READY runs and the versioned settings/destination
 plan. If creation fails after reserving the destination, it retains that

@@ -319,7 +319,11 @@ impl StateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let (lock, path) =
             ExclusivePathLock::database(path.as_ref()).map_err(StoreError::Ownership)?;
+        let existed = path.exists();
         let mut connection = Connection::open(path)?;
+        if existed {
+            validate_existing_schema(&connection)?;
+        }
         configure_connection(&connection)?;
         migrate(&mut connection)?;
         Ok(Self {
@@ -340,6 +344,7 @@ impl StateStore {
         let (lock, path) = ExclusivePathLock::database(path).map_err(StoreError::Ownership)?;
         let mut connection =
             Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        validate_existing_schema(&connection)?;
         configure_connection(&connection)?;
         migrate(&mut connection)?;
         Ok(Self {
@@ -954,6 +959,25 @@ impl StateStore {
     }
 }
 
+fn validate_existing_schema(connection: &Connection) -> Result<(), StoreError> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version > SCHEMA_VERSION {
+        return Err(StoreError::UnsupportedSchema(version));
+    }
+    let tables: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('jobs', 'runs', 'artifacts')",
+        [],
+        |row| row.get(0),
+    )?;
+    if version != SCHEMA_VERSION || tables != 3 {
+        return Err(StoreError::InvalidStoredValue {
+            field: "Module A database schema",
+            value: "not a supported Module A database; Create requires a new path".into(),
+        });
+    }
+    Ok(())
+}
+
 fn configure_connection(connection: &Connection) -> Result<(), StoreError> {
     connection.busy_timeout(Duration::from_secs(5))?;
     connection.pragma_update(None, "foreign_keys", "ON")?;
@@ -1079,6 +1103,28 @@ mod tests {
             "rnaseq-pipeline-state-{}-{nonce}.sqlite",
             process::id()
         ))
+    }
+
+    #[test]
+    fn opening_foreign_database_does_not_initialize_or_modify_it() {
+        let path = temp_database_path();
+        {
+            let connection = Connection::open(&path).expect("foreign database");
+            connection
+                .execute_batch(
+                    "CREATE TABLE user_data (value TEXT);
+                     INSERT INTO user_data VALUES ('keep');",
+                )
+                .expect("seed foreign database");
+        }
+        let before = fs::read(&path).expect("read");
+        assert!(StateStore::open(&path).is_err());
+        assert!(StateStore::open_existing(&path).is_err());
+        assert_eq!(fs::read(&path).expect("read"), before);
+        fs::remove_file(&path).expect("cleanup");
+        let mut marker = path.as_os_str().to_os_string();
+        marker.push(".pipeline.lock");
+        fs::remove_file(PathBuf::from(marker)).expect("cleanup marker");
     }
 
     #[test]
