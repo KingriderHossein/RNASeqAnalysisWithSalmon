@@ -1708,8 +1708,7 @@ mod tests {
     fn checksum_recovery_rejects_modified_gzip_before_manifest_creation() {
         let root = temp_root("checksum-recompressed-different-data");
         let original = b"@r\nAAAA\n+\nIIII\n";
-        let (mut store, run_id, _) =
-            fastq_ready_store(&root, &[("SRR000001.fastq", original)]);
+        let (mut store, run_id, _) = fastq_ready_store(&root, &[("SRR000001.fastq", original)]);
         let source = root.join("fastq").join("SRR000001").join("SRR000001.fastq");
         let compressed_dir = source.parent().expect("parent").join("compressed");
         fs::create_dir(&compressed_dir).expect("compressed");
@@ -1749,7 +1748,9 @@ mod tests {
         let altered_gzip = compressed_dir.join("altered.fastq.gz");
         gzip_file(&altered_source, &altered_gzip, &StopToken::default()).expect("altered gzip");
         assert_eq!(
-            fs::metadata(&altered_gzip).expect("alternate metadata").len(),
+            fs::metadata(&altered_gzip)
+                .expect("alternate metadata")
+                .len(),
             original_compressed_size
         );
         fs::rename(&altered_gzip, &compressed).expect("replace test gzip");
