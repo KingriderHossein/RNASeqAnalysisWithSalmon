@@ -1,0 +1,11 @@
+[package]
+name = "pipeline-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rnaseq-pipeline"
+path = "src/main.rs"
+
+[dependencies]
+pipeline-core = { path = "../pipeline-core" }
