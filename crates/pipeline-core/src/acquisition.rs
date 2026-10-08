@@ -930,14 +930,8 @@ mod tests {
 
         let seen = runner.seen();
         assert_eq!(seen[0].0, seen[1].0);
-        assert_eq!(
-            seen[0].1.log_prefix,
-            "SRR000001-attempt-1-prefetch"
-        );
-        assert_eq!(
-            seen[1].1.log_prefix,
-            "SRR000001-attempt-2-prefetch"
-        );
+        assert_eq!(seen[0].1.log_prefix, "SRR000001-attempt-1-prefetch");
+        assert_eq!(seen[1].1.log_prefix, "SRR000001-attempt-2-prefetch");
 
         fs::remove_dir_all(root).expect("cleanup");
     }
