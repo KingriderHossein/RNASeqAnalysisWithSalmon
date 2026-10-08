@@ -1,6 +1,7 @@
 use pipeline_core::{
     coordinator::{
-        create_job, terminal_job_report, ControlIntent, DriveMode, JobControl, JobCoordinator,
+        cancel_job, create_job, terminal_job_report, ControlIntent, DriveMode, JobControl,
+        JobCoordinator,
     },
     Accession, JobId, JobState, SraToolkitPlanner, StateStore, SystemCommandRunner, ToolRegistry,
 };
@@ -113,6 +114,22 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
                     0
                 } else {
                     4
+                });
+            }
+            let job = store
+                .get_job(&id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("job not found: {id}"))?;
+            let intent = JobControl::open_for_job(&job.output_root, &id)
+                .and_then(|control| control.intent())
+                .map_err(|e| e.to_string())?;
+            if intent == ControlIntent::Cancel {
+                let report = cancel_job(&mut store, &id, |event| println!("{event:?}"))
+                    .map_err(|e| e.to_string())?;
+                return Ok(if report.state == JobState::Cancelled {
+                    4
+                } else {
+                    1
                 });
             }
             let planner = SraToolkitPlanner::new(

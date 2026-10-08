@@ -235,3 +235,17 @@ fn discovery_failure_requires_refresh_and_never_claims_running_after_drop() {
     assert_eq!(refreshed["actions"]["primary"], true);
     assert!(runner.calls.lock().unwrap().is_empty());
 }
+
+#[test]
+fn changed_destination_identity_rejects_control_before_any_flag_write() {
+    let workspace = Workspace::new();
+    let bridge = DesktopBridge::default();
+    let snapshot = bridge
+        .create(&workspace.0, "identity", "SRR900001", 2)
+        .unwrap();
+    let root = Path::new(snapshot["job"]["output_root"].as_str().unwrap());
+    fs::write(root.join("MODULE-A-JOB"), b"another-job").unwrap();
+    assert!(bridge.control("cancel").unwrap_err().contains("identity"));
+    assert!(!root.join("control/cancel.request").exists());
+    assert!(!root.join("sra").exists());
+}

@@ -82,6 +82,8 @@ window with an active worker is prevented until the user requests a safe stop.
 An uncertain child lifetime preserves its in-flight state and conversion staging
 files; it must not become a retryable failure or trigger destructive cleanup.
 The frontend has a fixed command allowlist and no general shell/filesystem API.
+Control targets must match the persisted job identity; preexisting control-directory
+symlinks are rejected before request/output writes.
 Storage estimates stay unknown unless supported; a user recommendation warns
 without disabling job creation/start. See [Module A desktop](MODULE-A-DESKTOP.md).
 

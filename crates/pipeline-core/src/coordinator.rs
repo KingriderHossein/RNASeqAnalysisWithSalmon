@@ -76,8 +76,25 @@ impl JobControl {
         {
             return Err(JobError::Invalid("not a Module A job destination".into()));
         }
-        let directory = fs::canonicalize(job_root.join("control"))?;
+        let control = job_root.join("control");
+        if !fs::symlink_metadata(&control)?.file_type().is_dir() {
+            return Err(JobError::Invalid(
+                "control directory must be a real directory, not a symlink".into(),
+            ));
+        }
+        let directory = fs::canonicalize(control)?;
         Ok(Self { directory })
+    }
+
+    pub fn open_for_job(job_root: impl AsRef<Path>, id: &JobId) -> Result<Self, JobError> {
+        let job_root = job_root.as_ref();
+        let control = Self::open(job_root)?;
+        if fs::read(job_root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
+            return Err(JobError::Invalid(
+                "job destination identity does not match the database".into(),
+            ));
+        }
+        Ok(control)
     }
 
     pub fn request(&self, intent: ControlIntent) -> Result<(), JobError> {
@@ -215,14 +232,10 @@ pub fn cancel_job(
     if runs.iter().all(|run| run.state.is_terminal()) {
         return finish(store, id, Vec::new(), &mut emit);
     }
-    let _ownership = acquire_job_outputs(&job)?;
     let root = Path::new(&job.output_root);
-    if fs::read(root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
-        return Err(JobError::Invalid(
-            "job destination identity does not match the database".into(),
-        ));
-    }
-    JobControl::open(root)?.request(ControlIntent::Cancel)?;
+    let control = JobControl::open_for_job(root, id)?;
+    let _ownership = acquire_job_outputs(&job)?;
+    control.request(ControlIntent::Cancel)?;
     let mut errors = Vec::new();
     for run in runs {
         if run.state.is_terminal() {
@@ -382,13 +395,8 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
             threads,
         );
         // Same lease stays live between stages and across the entire batch.
+        let control = JobControl::open_for_job(root, id)?;
         let ownership = acquire_job_outputs(&job)?;
-        let control = JobControl::open(root)?;
-        if fs::read(root.join("MODULE-A-JOB"))? != id.as_str().as_bytes() {
-            return Err(JobError::Invalid(
-                "job destination identity does not match the database".into(),
-            ));
-        }
         let tools =
             json!(ToolKind::SRA_REQUIRED.iter().map(|kind| {
             let tool = self.planner.tools().tool(*kind);

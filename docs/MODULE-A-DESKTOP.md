@@ -66,7 +66,9 @@ implemented here. Scientific gates and cohort contracts remain unchanged.
 The main window has a bounded command permission list plus event listen/unlisten.
 There are no general frontend shell, filesystem, HTTP or opener plugins. CSP
 loads packaged local scripts/styles, with Tauri IPC endpoints only for connections.
-Untrusted job IDs, paths, errors and logs are rendered as text, not HTML. Path
+Untrusted job IDs, paths, errors and logs are rendered as text, not HTML. Core
+control requests check destination identity and reject preexisting control-directory
+symlinks before writing flags or creating stage output roots. Path
 membership/regular-file checks are defense in depth; this does not promise a
 hostile-filesystem race boundary beyond the core ownership model.
 

@@ -636,6 +636,26 @@ fn resume_preserves_a_preexisting_control_symlink() {
 }
 
 #[test]
+#[cfg(unix)]
+fn control_directory_symlink_never_receives_requests_or_output_writes() {
+    let (f, mut store) = fixture(&["SRR900001"]);
+    let unrelated = f.root.join("unrelated-control");
+    fs::create_dir(&unrelated).unwrap();
+    fs::remove_dir(f.job_root.join("control")).unwrap();
+    std::os::unix::fs::symlink(&unrelated, f.job_root.join("control")).unwrap();
+    assert!(JobControl::open(&f.job_root).is_err());
+    let planner = planner();
+    let runner = FakeRunner::default();
+    assert!(JobCoordinator::new(&planner, &runner)
+        .drive(&mut store, &f.id, DriveMode::Start, |_| {})
+        .is_err());
+    assert!(!f.job_root.join("sra").exists());
+    assert_eq!(fs::read_dir(unrelated).unwrap().count(), 0);
+    assert!(runner.seen.lock().unwrap().is_empty());
+    drop(store);
+}
+
+#[test]
 fn changed_toolchain_retains_pause_and_never_spawns() {
     let (f, mut store) = fixture(&["SRR900001"]);
     let original = planner();

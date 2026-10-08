@@ -63,7 +63,7 @@ fn create_inspect_pause_cancel_and_duplicate_preservation() {
     let text = String::from_utf8(inspected.stdout).unwrap();
     assert!(text.contains("SRR900001") && text.contains("ERR900002") && text.contains("READY"));
     // Both commands work while a different client owns the database.
-    let mut store = pipeline_core::StateStore::open(&db).unwrap();
+    let store = pipeline_core::StateStore::open(&db).unwrap();
     assert!(binary().arg("pause").arg(&job).status().unwrap().success());
     assert!(binary().arg("cancel").arg(&job).status().unwrap().success());
     assert!(job.join("control/pause.request").is_file());
@@ -75,14 +75,6 @@ fn create_inspect_pause_cancel_and_duplicate_preservation() {
         .status()
         .unwrap()
         .success());
-    for run in store
-        .list_job_runs(&pipeline_core::JobId::new("job").unwrap())
-        .unwrap()
-    {
-        store
-            .transition_run(&run.id, pipeline_core::RunState::Cancelled, None, None)
-            .unwrap();
-    }
     drop(store);
     let resumed = binary()
         .arg("resume")
@@ -94,8 +86,15 @@ fn create_inspect_pause_cancel_and_duplicate_preservation() {
     assert_eq!(
         resumed.status.code(),
         Some(4),
-        "terminal jobs need no tool discovery"
+        "queued cancellation needs no tool discovery"
     );
+    let store = pipeline_core::StateStore::open_existing(&db).unwrap();
+    assert!(store
+        .list_job_runs(&pipeline_core::JobId::new("job").unwrap())
+        .unwrap()
+        .iter()
+        .all(|run| run.state == pipeline_core::RunState::Cancelled));
+    drop(store);
     let missing = root.join("missing.sqlite");
     assert!(!binary()
         .arg("inspect")

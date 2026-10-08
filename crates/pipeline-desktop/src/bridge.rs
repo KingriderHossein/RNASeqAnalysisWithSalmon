@@ -163,7 +163,8 @@ impl DesktopBridge {
         let root = state.snapshot["job"]["output_root"]
             .as_str()
             .ok_or("open a job first")?;
-        pipeline_core::coordinator::JobControl::open(root)
+        let id = state.job_id.as_ref().ok_or("open a job first")?;
+        pipeline_core::coordinator::JobControl::open_for_job(root, id)
             .and_then(|c| c.request(intent))
             .map_err(error)?;
         state.snapshot["pending_control"] = json!(if intent == ControlIntent::Pause {
@@ -352,7 +353,9 @@ impl WorkerSession {
                 .map_err(error)?
                 .ok_or("job disappeared")?
                 .output_root;
-            let control = pipeline_core::coordinator::JobControl::open(&root).map_err(error)?;
+            let control =
+                pipeline_core::coordinator::JobControl::open_for_job(&root, &self.job_id)
+                    .map_err(error)?;
             if control.intent().map_err(error)? == ControlIntent::Cancel {
                 cancel_job(&mut store, &self.job_id, |event| {
                     if let Ok(snapshot) = self.bridge.event(event) {
@@ -462,7 +465,7 @@ fn persisted_snapshot(
             }
         }
     }
-    let intent = pipeline_core::coordinator::JobControl::open(&job.output_root)
+    let intent = pipeline_core::coordinator::JobControl::open_for_job(&job.output_root, &job.id)
         .and_then(|c| c.intent())
         .map_err(error)?;
     let pending = match intent {
