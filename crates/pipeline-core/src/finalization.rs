@@ -218,11 +218,7 @@ impl FastqFinalizationExecutor {
         let parent = validate_fastq_inputs(&fastq_paths)?;
         let compressed_directory = parent.join("compressed");
 
-        if compressed_directory.exists() {
-            return Err(FinalizationError::FinalCompressedDirectoryExists(
-                compressed_directory,
-            ));
-        }
+        ensure_new_destination(&compressed_directory)?;
 
         let attempt = store.begin_run_attempt(&current.id)?;
         if retry {
@@ -303,6 +299,12 @@ impl FastqFinalizationExecutor {
             }
         }
 
+        // Recheck immediately before publication: gzip work may take a long time.
+        // Never knowingly replace a user-created directory, even an empty one.
+        if let Err(error) = ensure_new_destination(&compressed_directory) {
+            self.persist_failure(store, &current.id, COMPRESSION_CHECKPOINT, &error)?;
+            return Err(error);
+        }
         if let Err(source) = fs::rename(&staging_directory, &compressed_directory) {
             let error = FinalizationError::Io {
                 operation: "finalize compressed FASTQ directory",
@@ -855,6 +857,20 @@ fn common_parent(paths: &[PathBuf]) -> Result<PathBuf, FinalizationError> {
         return Err(FinalizationError::MixedFastqParents);
     }
     Ok(parent)
+}
+
+fn ensure_new_destination(path: &Path) -> Result<(), FinalizationError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Err(FinalizationError::FinalCompressedDirectoryExists(
+            path.to_path_buf(),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(FinalizationError::Io {
+            operation: "inspect compressed output destination",
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
 }
 
 fn create_new_directory(path: &Path) -> Result<(), FinalizationError> {
@@ -1770,6 +1786,45 @@ mod tests {
         );
         assert_eq!(fs::read(&source).expect("raw FASTQ"), original);
         assert!(!compressed_dir.join("SHA256SUMS").exists());
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn prepublication_destination_check_preserves_existing_empty_directory() {
+        let root = temp_root("late-existing-empty-dir");
+        fs::create_dir_all(&root).expect("root");
+        let staged = root.join(".compressed-attempt-1");
+        let user_directory = root.join("compressed");
+        fs::create_dir(&staged).expect("stage");
+        fs::write(staged.join("created.fastq.gz"), b"partial-test-data").expect("stage data");
+        fs::create_dir(&user_directory).expect("preexisting empty dir");
+
+        assert!(matches!(
+            ensure_new_destination(&user_directory),
+            Err(FinalizationError::FinalCompressedDirectoryExists(_))
+        ));
+        assert!(user_directory.is_dir());
+        assert_eq!(
+            fs::read(staged.join("created.fastq.gz")).expect("stage retained"),
+            b"partial-test-data"
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_symlink_destination_is_not_treated_as_absent() {
+        use std::os::unix::fs::symlink;
+        let root = temp_root("dangling-destination");
+        fs::create_dir_all(&root).expect("root");
+        let target = root.join("nonexistent");
+        let link = root.join("compressed");
+        symlink(&target, &link).expect("symlink");
+        assert!(matches!(
+            ensure_new_destination(&link),
+            Err(FinalizationError::FinalCompressedDirectoryExists(_))
+        ));
+        assert!(fs::symlink_metadata(&link).is_ok());
         fs::remove_dir_all(root).expect("cleanup");
     }
 
