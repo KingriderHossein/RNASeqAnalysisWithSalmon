@@ -1923,8 +1923,11 @@ mod tests {
                      WHEN NEW.kind = '{kind}' BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;"
                 ))
                 .unwrap();
-            let failed = FastqFinalizationExecutor
-                .execute_to_complete(&mut store, &run_id, &StopToken::default());
+            let failed = FastqFinalizationExecutor.execute_to_complete(
+                &mut store,
+                &run_id,
+                &StopToken::default(),
+            );
             if let Ok(result) = failed {
                 assert!(matches!(
                     result.disposition,
@@ -1942,7 +1945,9 @@ mod tests {
                     RunState::Compressing
                 );
             }
-            injector.execute_batch("DROP TRIGGER forced_failure;").unwrap();
+            injector
+                .execute_batch("DROP TRIGGER forced_failure;")
+                .unwrap();
             drop(injector);
             drop(store);
             let mut resumed = StateStore::open(root.join("state.sqlite")).unwrap();
