@@ -54,6 +54,7 @@ table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th { text-align: left; font-size: 11px; color: var(--muted); background: #f9fbfa; padding: 13px 14px; font-weight: 600; }
 td { padding: 17px 14px; border-top: 1px solid var(--border); vertical-align: top; }
 td:first-child { font-family: ui-monospace, monospace; font-weight: 600; overflow-wrap: anywhere; }
+th:first-child, td:first-child { min-width: 11ch; white-space: nowrap; }
 .checkpoint { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
 .row-error { color: var(--danger); display: block; max-width: 300px; overflow-wrap: anywhere; font-size: 12px; margin-top: 6px; }
 .boundary-note { font-size: 12px; line-height: 1.6; margin-top: 25px; max-width: 670px; }

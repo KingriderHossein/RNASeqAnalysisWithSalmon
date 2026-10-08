@@ -353,9 +353,8 @@ impl WorkerSession {
                 .map_err(error)?
                 .ok_or("job disappeared")?
                 .output_root;
-            let control =
-                pipeline_core::coordinator::JobControl::open_for_job(&root, &self.job_id)
-                    .map_err(error)?;
+            let control = pipeline_core::coordinator::JobControl::open_for_job(&root, &self.job_id)
+                .map_err(error)?;
             if control.intent().map_err(error)? == ControlIntent::Cancel {
                 cancel_job(&mut store, &self.job_id, |event| {
                     if let Ok(snapshot) = self.bridge.event(event) {
@@ -433,7 +432,7 @@ fn publish(state: &mut SessionState) {
     state.snapshot["actions"] = json!({
         "primary": !state.active && !blocked && has_work && resumable,
         "primary_mode": if queued { "start" } else { "resume" },
-        "primary_label": if queued { "Start job" } else if paused { "Resume job" } else { "Continue unfinished runs" },
+        "primary_label": if !has_work { "Job finished" } else if queued { "Start job" } else if paused { "Resume job" } else { "Continue unfinished runs" },
         "pause": state.active, "cancel": has_work && !blocked,
         "retry": !state.active && !blocked && failed, "refresh": !state.active,
     });
