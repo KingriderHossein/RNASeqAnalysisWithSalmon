@@ -98,5 +98,3 @@ def main():
 if __name__=="__main__":
     try:main()
     except Exception as exc:emit("ERROR "+repr(exc));sys.exit(2)
-
-[executed on device: kingrider (3f6f96d6-08b4-4a97-9025-56f372ed36e0)]
