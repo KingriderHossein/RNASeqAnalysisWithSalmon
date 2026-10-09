@@ -99,15 +99,24 @@ def build():
  if tx:event("استخراج ۱۹۶٬۵۲۰ رونوشت و تطبیق شناسه‌ها تکمیل شده است","G3 FASTA + audit")
  if competitive:event("آزمون رقابتی rRNA برای ۳۲ نمونه انجام شده؛ G4 هنوز نیازمند تصمیم علمی است","competition_all32_10k.tsv")
  if dupcount:event(f"Salmon {dupcount} زوج توالی تکراری گزارش کرده؛ مشکل انتساب بین ژن‌ها باید بررسی شود","duplicate_clusters.tsv")
- stage5=fill("salmon",[item("پایلوت single-end هنوز نتیجهٔ تأییدشده ندارد",False),item("کمی‌سازی کامل ۳۲ نمونه انجام نشده است",False)],"بعد از پذیرش G3 و G4، پایلوت G5 با index تثبیت‌شده","Issue #5".split(","),"G5/G6")
- stage5["status"]="pending"
+ pilotdir=ROOT/"pilots/G5_SRR4453804_keepDuplicates_raw_v1"
+ pilotquant=pilotdir/"quant.sf"
+ pilotrc=read(pilotdir/"exit_code.txt").strip()
+ pilot_started=pilotdir.is_dir()
+ pilot_done=pilotrc=="0" and exists(pilotquant) and exists(pilotdir/"aux_info/meta_info.json")
+ pilotdetails=[item("پایلوت SRR4453804 با index معتبر آغاز شده است",pilot_started),item("نتیجهٔ quant.sf و meta_info.json کامل و خروج موفق",pilot_done),item("کمی‌سازی کامل ۳۲ نمونه هنوز انجام نشده است",False)]
+ stage5=fill("salmon",pilotdetails,"ممیزی متادیتای Salmon و تعیین سیاست نهایی G5 قبل از اجرای کامل",["G5 pilot outputs","Issue #5"],"G5/G6")
+ stage5["status"]="done" if pilot_done else "running" if pilot_started and not pilotrc else "attention" if pilotrc and pilotrc!="0" else "pending"
+ stage5["completed"]=sum(x["ok"] for x in pilotdetails);stage5["total"]=3
+ if pilot_done:event("پایلوت SRR4453804 موفق شد؛ quant.sf آمادهٔ بررسی است","G5 pilot quant.sf")
+ elif pilot_started:event("اجرای پایلوت Salmon روی SRR4453804 آغاز شده است","G5 pilot output folder")
  for k,title,gate in [("tximport","ورود خروجی Salmon به tximport","G7"),("deseq2","مدل‌های آماری Track A و Track B","G8"),("comparison","بررسی نتایج و مقایسه با مقاله","G9/G10")]:
   fill(k,[item("این مرحله هنوز اجرا نشده است",False)],"وابسته به پذیرش مراحل قبلی",[],gate)
   stages[k]["status"]="pending"
  b["stages"]=list(stages.values())
  b["events_detail"]=events[:12]
- b["current_stage"]="G3 — ساخت و اعتبارسنجی Salmon Index"
- b["current_detail"]=rs["progress_note"]
+ b["current_stage"]="G5 — پایلوت Salmon" if pilot_started else "G3 — ساخت و اعتبارسنجی Salmon Index"
+ b["current_detail"]=("پایلوت SRR4453804 با FASTQ خام در حال اجرا یا بررسی است" if pilot_started else rs["progress_note"])
  b["reference"]={"sources_verified":gtf and genome,"transcripts":196520 if tx else None,"tx2gene":tx2,"decoys":297 if dec else 0,
   "index_running":indexrunning,"index_build_returned_zero":indexdone,"index_file_count":sum(1 for x in indexdir.iterdir() if x.is_file()) if indexdir.is_dir() else 0,
   "index_stage":lastphase,"duplicate_pairs":dupcount}
