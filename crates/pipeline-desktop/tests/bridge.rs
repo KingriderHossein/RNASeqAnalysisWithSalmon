@@ -220,6 +220,58 @@ fn idle_cancel_needs_no_toolkit_and_keeps_user_files() {
 }
 
 #[test]
+fn desktop_control_during_finalization_stops_before_completion() {
+    for intent in ["pause", "cancel"] {
+        let workspace = Workspace::new();
+        let bridge = DesktopBridge::default();
+        bridge.create(&workspace.0, "job", "SRR900001", 2).unwrap();
+        let runner = Runner::default();
+        let mut requested = false;
+        bridge
+            .begin("start")
+            .unwrap()
+            .execute_with(
+                || Ok(planner()),
+                &runner,
+                |snapshot| {
+                    if !requested && snapshot["activity"]["stage"] == "finalization" {
+                        let accepted = bridge.control(intent).unwrap();
+                        assert_eq!(accepted["pending_control"], intent);
+                        assert!(bridge.active(), "acknowledgement is not a stopped worker");
+                        requested = true;
+                    }
+                },
+            )
+            .unwrap();
+        assert!(requested);
+        assert!(!bridge.active());
+        let stopped = bridge.snapshot().unwrap();
+        let expected = if intent == "pause" {
+            "PAUSED"
+        } else {
+            "CANCELLED"
+        };
+        assert_eq!(stopped["job"]["state"], expected);
+        assert_ne!(stopped["runs"][0]["state"], "COMPLETE");
+        assert!(!workspace.0.join("job/fastq/SRR900001/compressed").exists());
+        assert!(workspace
+            .0
+            .join("job/fastq/SRR900001/SRR900001.fastq")
+            .is_file());
+        assert_eq!(runner.calls.lock().unwrap().len(), 3);
+        if intent == "pause" {
+            bridge
+                .begin("resume")
+                .unwrap()
+                .execute_with(|| Ok(planner()), &runner, |_| {})
+                .unwrap();
+            assert_eq!(bridge.snapshot().unwrap()["job"]["state"], "COMPLETE");
+            assert_eq!(runner.calls.lock().unwrap().len(), 3);
+        }
+    }
+}
+
+#[test]
 fn low_space_guidance_does_not_prevent_creation_and_logs_are_bounded() {
     let workspace = Workspace::new();
     let bridge = DesktopBridge::default();
