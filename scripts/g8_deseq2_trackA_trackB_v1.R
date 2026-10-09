@@ -1,0 +1,93 @@
+#!/usr/bin/env Rscript
+options(stringsAsFactors=FALSE)
+suppressPackageStartupMessages({library(DESeq2);library(tximport)})
+root <- "/home/kingrider/GSE89223_download"
+source <- file.path(root,"audits/G7_tximport_20261009/result_v1")
+out <- file.path(root,"audits/G8_DESeq2_20261009")
+if (dir.exists(out)) stop("G8 output directory already exists; never overwrite")
+dir.create(out,recursive=TRUE)
+log <- file.path(out,"run.log")
+con <- file(log,open="wt")
+sink(con,split=TRUE)
+sink(con,type="message")
+on.exit({sink(type="message");sink();close(con)},add=TRUE)
+cat("START",format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z"),"\n")
+cat("DESeq2",as.character(packageVersion("DESeq2")),"R",as.character(getRversion()),"\n")
+txi <- readRDS(file.path(source,"tximport_gene_all32_v1.rds"))
+m <- read.csv(file.path(source,"metadata_all32_v1.csv"))
+stopifnot(identical(colnames(txi$counts),m$run),nrow(txi$counts)==57820,ncol(txi$counts)==32)
+if(!identical(txi$countsFromAbundance,"no")) stop("Expected length-aware tximport countsFromAbundance=no")
+run_track <- function(name,ids,model,reference,contrast,condition_column,expected_n,expected_groups=NULL) {
+  cat("TRACK_START",name,format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z"),"\n")
+  stopifnot(length(ids)==expected_n,!anyDuplicated(ids),all(ids%in%m$run))
+  d <- m[match(ids,m$run),,drop=FALSE]
+  stopifnot(identical(d$run,ids))
+  rownames(d) <- d$run
+  if(name=="A") {
+    stopifnot(length(ids)==22)
+    d$group <- factor(d$paper_group,levels=c("control","tumor"))
+    stopifnot(identical(as.integer(table(d$group)),c(12L,10L)))
+  } else {
+    stopifnot(length(ids)==18, length(unique(d$patient_id))==9)
+    stopifnot(all(table(d$patient_id)==2))
+    d$patient <- factor(d$patient_id)
+    d$condition <- factor(ifelse(d$analysis_group=="pca_tumor","tumor","adjacent_normal"),levels=c("adjacent_normal","tumor"))
+    stopifnot(all(table(d$condition)==9),all(tapply(as.character(d$condition),d$patient,function(x) length(unique(x)))==2))
+  }
+  mx <- model.matrix(model,data=d)
+  stopifnot(qr(mx)$rank==ncol(mx),ncol(mx)<nrow(mx))
+  cat("DESIGN_PASS",name,"samples",nrow(d),"cols",ncol(mx),"rank",qr(mx)$rank,"\n")
+  sel <- match(d$run,colnames(txi$counts))
+  t <- lapply(txi,function(item) if(is.matrix(item)&&ncol(item)==32) item[,sel,drop=FALSE] else item)
+  stopifnot(identical(colnames(t$counts),d$run))
+  dds <- DESeqDataSetFromTximport(t,colData=d,design=model)
+  keep <- rowSums(counts(dds))>0
+  cat("NONZERO_GENES",name,sum(keep),"ALL_ZERO",sum(!keep),"\n")
+  dds <- dds[keep,]
+  dds <- DESeq(dds,quiet=TRUE)
+  res <- results(dds,contrast=contrast,alpha=0.05)
+  tab <- as.data.frame(res)
+  tab$gene_id <- rownames(tab)
+  tab <- tab[,c("gene_id","baseMean","log2FoldChange","lfcSE","stat","pvalue","padj")]
+  tab$tested <- !is.na(tab$pvalue)
+  tab$significant <- !is.na(tab$padj)&tab$padj<0.05
+  tab <- tab[order(tab$padj,na.last=TRUE),]
+  dest <- file.path(out,paste0("track_",name))
+  dir.create(dest)
+  write.csv(d,file.path(dest,"metadata.csv"),row.names=FALSE)
+  write.csv(mx,file.path(dest,"design_matrix.csv"),row.names=TRUE)
+  write.csv(tab,file.path(dest,"deseq2_full_results.csv"),row.names=FALSE,na="NA")
+  saveRDS(dds,file.path(dest,"dds.rds"),compress="xz")
+  saveRDS(res,file.path(dest,"results.rds"),compress="xz")
+  sf <- sizeFactors(dds)
+  write.csv(data.frame(run=names(sf),size_factor=unname(sf)),file.path(dest,"size_factors.csv"),row.names=FALSE)
+  png(file.path(dest,"dispersion.png"),width=1000,height=750,res=120)
+  plotDispEsts(dds)
+  dev.off()
+  vs <- vst(dds,blind=TRUE,nsub=min(1000L,nrow(dds)))
+  v <- assay(vs)
+  pc <- prcomp(t(v),center=TRUE,scale.=FALSE)
+  pcs <- data.frame(run=rownames(pc$x),PC1=pc$x[,1],PC2=pc$x[,2],group=as.character(d[[condition_column]]))
+  write.csv(pcs,file.path(dest,"pca_coordinates.csv"),row.names=FALSE)
+  png(file.path(dest,"PCA.png"),width=1000,height=750,res=120)
+  cols <- ifelse(pcs$group %in% c("tumor"),"#CB5A55","#467EA3")
+  plot(pcs$PC1,pcs$PC2,pch=19,col=cols,xlab=paste0("PC1 (",round(100*summary(pc)$importance[2,1],1),"%)"),ylab=paste0("PC2 (",round(100*summary(pc)$importance[2,2],1),"%)"),main=paste("Track",name,"PCA"))
+  text(pcs$PC1,pcs$PC2,labels=pcs$run,pos=3,cex=0.55)
+  legend("topright",legend=unique(pcs$group),col=ifelse(unique(pcs$group)=="tumor","#CB5A55","#467EA3"),pch=19,cex=0.8)
+  dev.off()
+  distm <- as.matrix(dist(t(v)))
+  write.csv(distm,file.path(dest,"sample_distances.csv"))
+  png(file.path(dest,"sample_distances.png"),width=950,height=850,res=110)
+  heatmap(distm,scale="none",main=paste("Track",name,"sample distance"),margins=c(9,9))
+  dev.off()
+  summary <- list(track=name,design=paste(deparse(model),collapse=""),contrast=contrast,n_samples=ncol(dds),n_genes=nrow(dds),all_zero_genes=sum(!keep),tested=sum(tab$tested),has_padj=sum(!is.na(tab$padj)),significant=sum(tab$significant),up=sum(tab$significant&tab$log2FoldChange>0),down=sum(tab$significant&tab$log2FoldChange<0),pca_var_pc1=summary(pc)$importance[2,1],pca_var_pc2=summary(pc)$importance[2,2],size_factor_range=range(sf),cooks_outlier_flagged=sum(is.na(tab$pvalue)),samples=d$run)
+  dput(summary,file=file.path(dest,"summary.R"))
+  cat("TRACK_DONE",name,"sig",summary$significant,"tested",summary$tested,"out",dest,"\n")
+  summary
+}
+a <- m$run[m$paper_final_set=="yes"]
+b <- m$run[m$paired_pca_sensitivity=="yes"]
+sa <- run_track("A",a,~group,"control",c("group","tumor","control"),"group",22L)
+sb <- run_track("B",b,~patient+condition,"adjacent_normal",c("condition","tumor","adjacent_normal"),"condition",18L)
+writeLines(capture.output(sessionInfo()),file.path(out,"sessionInfo.txt"))
+cat("ALL_G8_DONE",format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z"),"\n")
