@@ -1,5 +1,17 @@
 # RNASeqAnalysisWithSalmon
 
+## گزارش تعاملی پژوهش | Interactive scientific report
+
+[![پیش‌نمایش گزارش تعاملی GSE89223: نتایج Salmon و DESeq2، کیفیت نمونه‌ها و مقایسه با مقاله](docs/dashboard/preview.svg)](https://github.com/KingriderHossein/RNASeqAnalysisWithSalmon/blob/main/docs/dashboard/index.html)
+
+**[مشاهدهٔ فایل داشبورد تعاملی](docs/dashboard/index.html)** · **[دریافت HTML برای بازکردن در مرورگر](https://raw.githubusercontent.com/KingriderHossein/RNASeqAnalysisWithSalmon/main/docs/dashboard/index.html)** · [گزارش علمی](docs/reports/GSE89223-final-advisor-scientific-summary-2026-10-09.md)
+
+> نمایشگر GitHub فایل HTML را اجرا نمی‌کند. برای کار با نمودارها، فایل HTML را دریافت و در مرورگر باز کنید. فعال‌سازی GitHub Pages (انتشار عمومی وب‌سایت) جداگانه انجام می‌شود و فعلاً فعال نشده است.
+
+> **Scientific status:** Full quantification and publication comparison completed; G9 biological quality review remains open. This preview reports completed analyses, not independent clinical validation.
+
+---
+
 Reproducible **Salmon-first reanalysis of GSE89223 prostate-cancer RNA-seq**.
 
 ## In one line
