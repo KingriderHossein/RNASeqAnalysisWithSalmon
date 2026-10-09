@@ -72,7 +72,28 @@ def build():
  rs=fill("reference",refitems,"تکمیل و تأیید index؛ تعیین تکلیف شناسه‌های تکراری بین ژن‌ها",["G3 GTF/FASTA","derived/tx2gene.tsv","derived/decoys.txt","derived/salmon_index_stderr.log"],"G3")
  rs["status"]="done" if all(x["ok"] for x in refitems) else "running" if indexrunning else "attention"
  rs["completed"]=sum(x["ok"] for x in refitems);rs["total"]=len(refitems)
- rs["progress_note"]=lastphase if indexrunning else ("Index building returned success; further review required" if indexdone else "ساخت index در حال اجرا نیست؛ بررسی لازم است")
+ altidx=REF/"salmon_v2.8.0_decoyaware_keepDuplicates_k31"
+ altlog=REF/"derived/keepDuplicates_build/salmon_stderr.log"
+ alt_exit=read(REF/"derived/keepDuplicates_build/exit_code.txt").strip()
+ alt_meta=altidx/"info.json"
+ alt_complete=alt_exit=="0" and exists(alt_meta)
+ alt_running=False
+ if not alt_complete and exists(altlog):
+  try:
+   for p in Path("/proc").iterdir():
+    if not p.name.isdigit():continue
+    try:
+     cmdline=(p/"cmdline").read_bytes().replace(b"\0",b" ").decode("utf-8","ignore")
+     if cmdline.startswith("salmon index") and str(altidx) in cmdline:
+      alt_running=True;break
+    except (OSError,PermissionError):continue
+  except OSError:pass
+ rs["details"].append(item("ساخت نسخهٔ مستقل --keepDuplicates؛ حفظ رونوشت‌های هم‌توالی",alt_complete))
+ rs["completed"]=sum(x["ok"] for x in rs["details"]);rs["total"]=len(rs["details"])
+ rs["status"]="attention" if not alt_running else "running"
+ rs["progress_note"]=("نسخهٔ keepDuplicates در حال ساخت است" if alt_running else "نسخهٔ keepDuplicates ساخته شد؛ کنترل هویت و پذیرش G3 باقی است" if alt_complete else "بررسی index جدید و سیاست تکرارها باقی است")
+ if alt_running:event("نسخهٔ keepDuplicates در حال ساخت است؛ index پیش‌فرض قبلاً به پایان رسیده","keepDuplicates_build/salmon_stderr.log")
+ if alt_complete:event("ساخت keepDuplicates با exit code صفر به پایان رسید؛ ممیزی هویت لازم است","keepDuplicates_build/exit_code.txt")
  if indexrunning:event("ساخت Salmon Index هنوز فعال است: "+(lastphase or "در حال پردازش"),"Salmon log / proc")
  if indexdone:event("ساخت اولیه Salmon Index به پایان رسید؛ اعتبارسنجی نهایی باقی است","index_build.log")
  if tx:event("استخراج ۱۹۶٬۵۲۰ رونوشت و تطبیق شناسه‌ها تکمیل شده است","G3 FASTA + audit")
