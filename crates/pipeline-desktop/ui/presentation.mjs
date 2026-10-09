@@ -25,3 +25,16 @@ export function acceptRevision(current, next) {
 export function progressText(run) {
   return `${formatBytes(run.observed_bytes)} observed · total size ${run.total_bytes == null ? "unknown" : formatBytes(run.total_bytes)}`;
 }
+
+export function controlStatus(snapshot) {
+  if (snapshot.pending_control) {
+    const intent = snapshot.pending_control === "pause" ? "Pause" : "Cancel";
+    const boundary = snapshot.activity?.stage === "finalization"
+      ? "Stopping compression or checksum work at a safe buffer boundary."
+      : "Waiting for the current external stage or next safe checkpoint.";
+    return `${intent} requested. ${boundary}`;
+  }
+  return snapshot.active
+    ? "A worker is running. Pause or Cancel and wait for it to stop before closing."
+    : "Checkpoints saved. Completed runs will be skipped.";
+}

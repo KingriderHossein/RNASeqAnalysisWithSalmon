@@ -142,11 +142,14 @@ Nikitina AS et al. *Novel RNA biomarkers of prostate cancer revealed by RNA-seq 
 
 **Architecture v2.0 is the frozen execution baseline.**
 
-Module A core, CLI and Tauri desktop v0.1.5 share persisted resolved-run batches,
-output ownership and safe stage-boundary controls. Both clients support validated
+Module A core, CLI and Tauri desktop v0.1.6 share persisted resolved-run batches,
+output ownership and durable controls. Pause/Cancel stop Rust compression and
+checksum work at safe buffer boundaries; external tools finish their stage.
+Both clients support validated
 TXT/CSV/TSV run import. The desktop has file preview and job creation,
 saved checkpoints, bounded logs and warn-only workspace guidance. Full
 process-tree recovery, study/URL resolution and automatic network backoff remain
 unfinished. See the desktop document for exact validation evidence; accepted-
 cohort raw execution and release acceptance remain gated.
+See [finalization control and recovery](docs/MODULE-A-FINALIZATION-CONTROL.md).
 

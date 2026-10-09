@@ -87,3 +87,14 @@ symlinks are rejected before request/output writes.
 Storage estimates stay unknown unless supported; a user recommendation warns
 without disabling job creation/start. See [Module A desktop](MODULE-A-DESKTOP.md).
 
+## Module A in-process control — v0.1.6
+
+Only Rust finalization receives a durable control probe. A request or control
+read error is latched at stream checks; errors halt the batch and persist an
+actionable job failure. Cancel applies after the stream has stopped. External
+tool stages retain the unprobed token and stage-boundary policy until descendant
+termination is proven. Published compression recovery retains COMPRESSING on
+stop, preserving its verified-adoption path; unpublished gzip staging may be
+cleaned only by its owning attempt. Scientific contracts remain unchanged.
+See [finalization control](MODULE-A-FINALIZATION-CONTROL.md).
+

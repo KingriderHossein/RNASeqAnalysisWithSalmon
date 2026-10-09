@@ -21,7 +21,8 @@ Usage:
   rnaseq-pipeline cancel JOB_ROOT
   rnaseq-pipeline tools
 
-Pause/Cancel persist a request; active tools finish at a safe stage boundary.
+Pause/Cancel persist a request; compression/checksum work stops at safe buffer boundaries.
+External tools finish at a safe stage boundary.
 Crash checkpoints with ambiguous tool lifetime stay blocked. See docs/MODULE-A-CLI.md.
 ";
 
@@ -115,7 +116,7 @@ pub fn execute(args: &[OsString]) -> Result<i32, String> {
             JobControl::open(Path::new(&args[1]))
                 .and_then(|control| control.request(intent))
                 .map_err(|e| e.to_string())?;
-            println!("{intent:?} requested; a worker applies it at a safe stage boundary. Completed outputs are retained.");
+            println!("{intent:?} requested; compression/checksum work stops at a safe buffer boundary; external tools finish at a safe stage boundary. Completed outputs are retained.");
             Ok(0)
         }
         "tools" if args.len() == 1 => {

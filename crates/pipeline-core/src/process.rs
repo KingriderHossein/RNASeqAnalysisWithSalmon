@@ -6,7 +6,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread,
     time::Duration,
@@ -63,18 +63,65 @@ pub struct CommandOutcome {
     pub stderr_log: PathBuf,
 }
 
-#[derive(Debug, Clone, Default)]
+type StopProbe = dyn Fn() -> Result<bool, String> + Send + Sync;
+
+#[derive(Clone, Default)]
 pub struct StopToken {
     requested: Arc<AtomicBool>,
+    probe: Option<Arc<StopProbe>>,
+    probe_error: Arc<Mutex<Option<String>>>,
+}
+
+impl fmt::Debug for StopToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StopToken")
+            .field("requested", &self.requested.load(Ordering::SeqCst))
+            .field("has_probe", &self.probe.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl StopToken {
+    /// Only in-process work may use a durable probe until tool-tree termination
+    /// is proven. Once observed, a request or read error stays latched.
+    pub(crate) fn with_probe(
+        probe: impl Fn() -> Result<bool, String> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            probe: Some(Arc::new(probe)),
+            ..Self::default()
+        }
+    }
+
     pub fn request_stop(&self) {
         self.requested.store(true, Ordering::SeqCst);
     }
 
     pub fn is_stop_requested(&self) -> bool {
+        if self.requested.load(Ordering::SeqCst) {
+            return true;
+        }
+        if let Some(probe) = &self.probe {
+            match probe() {
+                Ok(false) => {}
+                Ok(true) => self.request_stop(),
+                Err(error) => {
+                    let mut first = self.probe_error.lock().unwrap_or_else(|e| e.into_inner());
+                    if first.is_none() {
+                        *first = Some(error);
+                    }
+                    self.request_stop();
+                }
+            }
+        }
         self.requested.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn probe_error(&self) -> Option<String> {
+        self.probe_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -358,6 +405,27 @@ mod tests {
         assert!(!token.is_stop_requested());
         token.request_stop();
         assert!(token.is_stop_requested());
+    }
+
+    #[test]
+    fn probed_stop_is_latched_and_shared_without_repolling() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = calls.clone();
+        let token = StopToken::with_probe(move || Ok(seen.fetch_add(1, Ordering::SeqCst) == 1));
+        let clone = token.clone();
+        assert!(!token.is_stop_requested());
+        assert!(clone.is_stop_requested());
+        assert!(token.is_stop_requested());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(token.probe_error(), None);
+    }
+
+    #[test]
+    fn probe_failure_stops_and_retains_the_first_error() {
+        let token = StopToken::with_probe(|| Err("control unreadable".into()));
+        assert!(token.is_stop_requested());
+        assert!(token.clone().is_stop_requested());
+        assert_eq!(token.probe_error().as_deref(), Some("control unreadable"));
     }
 
     #[test]

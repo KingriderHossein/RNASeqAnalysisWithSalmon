@@ -188,7 +188,7 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.state::<DesktopBridge>().active() {
                     api.prevent_close();
-                    let _ = window.emit("download-error", "Pause or Cancel this job and wait for its current stage before closing the window.");
+                    let _ = window.emit("download-error", "Pause or Cancel this job and wait for the worker to stop before closing the window.");
                 }
             }
         })

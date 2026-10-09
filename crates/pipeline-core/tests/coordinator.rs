@@ -323,6 +323,160 @@ fn pause_at_sra_boundary_survives_reopen_and_resumes_conversion() {
 }
 
 #[test]
+fn finalization_pause_reaches_stream_checkpoint_and_resumes_without_tools() {
+    let (f, mut store) = fixture(&["SRR900001", "SRR900002"]);
+    let planner = planner();
+    let runner = FakeRunner::default();
+    let control = JobControl::open(&f.job_root).unwrap();
+    let coordinator = JobCoordinator::new(&planner, &runner);
+    let paused = coordinator
+        .drive(&mut store, &f.id, DriveMode::Start, |event| {
+            if matches!(
+                event,
+                JobEvent::StageStarting {
+                    stage: pipeline_core::coordinator::JobStage::Finalization,
+                    ..
+                }
+            ) {
+                control.request(ControlIntent::Pause).unwrap();
+            }
+        })
+        .unwrap();
+    assert_eq!(paused.state, JobState::Paused);
+    assert_eq!(paused.runs[0].state, RunState::PausedAtBoundary);
+    assert_eq!(paused.runs[0].last_checkpoint.as_deref(), Some("gzip"));
+    assert_eq!(paused.runs[1].state, RunState::Ready);
+    assert!(f.job_root.join("fastq/SRR900001/SRR900001.fastq").is_file());
+    assert!(!f.job_root.join("fastq/SRR900001/compressed").exists());
+    let count = runner.seen.lock().unwrap().len();
+    assert_eq!(count, 3);
+    drop(store);
+    let mut store = StateStore::open_existing(&f.db).unwrap();
+    let complete = coordinator
+        .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+        .unwrap();
+    assert_eq!(complete.state, JobState::Complete);
+    assert_eq!(
+        runner.seen.lock().unwrap().len(),
+        count + 3,
+        "only queued sibling executes tools"
+    );
+    assert!(complete.runs[0].attempt_count > paused.runs[0].attempt_count);
+    drop(store);
+}
+
+#[test]
+fn finalization_cancel_is_applied_after_stopping_and_preserves_completed_sibling() {
+    let (f, mut store) = fixture(&["SRR900001", "SRR900002", "SRR900003"]);
+    let planner = planner();
+    let runner = FakeRunner::default();
+    let control = JobControl::open(&f.job_root).unwrap();
+    let coordinator = JobCoordinator::new(&planner, &runner);
+    let cancelled = coordinator
+        .drive(&mut store, &f.id, DriveMode::Start, |event| {
+            if let JobEvent::StageStarting {
+                run_id,
+                stage: pipeline_core::coordinator::JobStage::Finalization,
+            } = event
+            {
+                if run_id.as_str().ends_with("SRR900002") {
+                    control.request(ControlIntent::Cancel).unwrap();
+                }
+            }
+        })
+        .unwrap();
+    assert_eq!(cancelled.state, JobState::Cancelled);
+    assert_eq!(cancelled.runs[0].state, RunState::Complete);
+    assert_eq!(cancelled.runs[1].state, RunState::Cancelled);
+    assert_eq!(cancelled.runs[2].state, RunState::Cancelled);
+    let manifest = f.job_root.join("fastq/SRR900001/compressed/SHA256SUMS");
+    let original = fs::read(&manifest).unwrap();
+    assert!(!f.job_root.join("fastq/SRR900002/compressed").exists());
+    assert_eq!(runner.seen.lock().unwrap().len(), 6);
+    let resumed = coordinator
+        .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+        .unwrap();
+    assert_eq!(resumed.runs, cancelled.runs);
+    assert_eq!(fs::read(manifest).unwrap(), original);
+    drop(store);
+}
+
+#[test]
+fn unreadable_or_missing_control_stops_finalization_and_records_job_error() {
+    for remove_directory in [false, true] {
+        let (f, mut store) = fixture(&["SRR900001", "SRR900002"]);
+        let planner = planner();
+        let runner = FakeRunner::default();
+        let coordinator = JobCoordinator::new(&planner, &runner);
+        let report = coordinator
+            .drive(&mut store, &f.id, DriveMode::Start, |event| {
+                if matches!(
+                    event,
+                    JobEvent::StageStarting {
+                        stage: pipeline_core::coordinator::JobStage::Finalization,
+                        ..
+                    }
+                ) {
+                    if remove_directory {
+                        fs::rename(f.job_root.join("control"), f.job_root.join("saved-control"))
+                            .unwrap();
+                    } else {
+                        fs::create_dir(f.job_root.join("control/pause.request")).unwrap();
+                    }
+                }
+            })
+            .unwrap();
+        assert_eq!(report.state, JobState::Failed);
+        assert!(report.errors[0].1.contains("durable job control"));
+        assert_eq!(report.runs[0].state, RunState::PausedAtBoundary);
+        assert_eq!(report.runs[1].state, RunState::Ready);
+        let persisted = store.get_job(&f.id).unwrap().unwrap();
+        assert_eq!(persisted.state, JobState::Failed);
+        assert!(persisted
+            .last_error
+            .unwrap()
+            .contains("durable job control"));
+        assert!(!f.job_root.join("fastq/SRR900001/compressed").exists());
+        assert_eq!(runner.seen.lock().unwrap().len(), 3);
+        if remove_directory {
+            fs::rename(f.job_root.join("saved-control"), f.job_root.join("control")).unwrap();
+        } else {
+            fs::remove_dir(f.job_root.join("control/pause.request")).unwrap();
+        }
+        let resumed = coordinator
+            .drive(&mut store, &f.id, DriveMode::Resume, |_| {})
+            .unwrap();
+        assert_eq!(resumed.state, JobState::Complete);
+        drop(store);
+    }
+}
+
+#[test]
+fn durable_pause_during_external_stage_still_waits_for_its_boundary() {
+    let (f, mut store) = fixture(&["SRR900001"]);
+    let planner = planner();
+    let runner = FakeRunner::default();
+    let control = JobControl::open(&f.job_root).unwrap();
+    let paused = JobCoordinator::new(&planner, &runner)
+        .drive(&mut store, &f.id, DriveMode::Start, |event| {
+            if matches!(
+                event,
+                JobEvent::StageStarting {
+                    stage: pipeline_core::coordinator::JobStage::Acquisition,
+                    ..
+                }
+            ) {
+                control.request(ControlIntent::Pause).unwrap();
+            }
+        })
+        .unwrap();
+    assert_eq!(paused.state, JobState::Paused);
+    assert_eq!(paused.runs[0].state, RunState::SraValid);
+    assert_eq!(runner.seen.lock().unwrap().len(), 2);
+    drop(store);
+}
+
+#[test]
 fn cancel_preserves_completed_sibling_and_cannot_be_resumed() {
     let (f, mut store) = fixture(&["SRR900001", "SRR900002"]);
     let planner = planner();

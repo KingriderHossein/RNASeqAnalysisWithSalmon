@@ -212,12 +212,13 @@ impl DesktopBridge {
                 state.snapshot["activity"] = Value::Null;
             }
             JobEvent::StageStarting { run_id, stage } => {
-                let stage = match stage {
-                    JobStage::Acquisition => "Acquiring reads",
-                    JobStage::Conversion => "Converting FASTQ",
-                    JobStage::Finalization => "Compressing and verifying",
+                let (stage, label) = match stage {
+                    JobStage::Acquisition => ("acquisition", "Acquiring reads"),
+                    JobStage::Conversion => ("conversion", "Converting FASTQ"),
+                    JobStage::Finalization => ("finalization", "Compressing and verifying"),
                 };
-                state.snapshot["activity"] = json!({"run_id": run_id.as_str(), "label": stage});
+                state.snapshot["activity"] =
+                    json!({"run_id": run_id.as_str(), "stage": stage, "label": label});
             }
             JobEvent::RunError { message, .. } => {
                 state.snapshot["worker_error"] = json!(message);
