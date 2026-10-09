@@ -1,0 +1,20 @@
+{
+  "analysis_id": "GSE89223_salmon2p8_SF_raw_GRCh37p13_GENCODEv19_v1",
+  "scope": "candidate_configuration_pending_G4_G5_formal_acceptance",
+  "salmon_version": "salmon 2.8.0",
+  "library_type": "SF",
+  "fragment_length_prior_mean": 150,
+  "fragment_length_prior_sd": 50,
+  "threads": 6,
+  "seq_bias": false,
+  "gc_bias": false,
+  "pos_bias": false,
+  "preprocessing": "raw_fastq_no_trimming_no_rrna_filter_no_dedup",
+  "index": "/home/kingrider/GSE89223_download/reference/G3_GENCODEv19_GRCh37p13/salmon_v2.8.0_decoyaware_keepDuplicates_k31",
+  "index_seq_hash": "51ab1987ab067104d4fa080d2f203a6a757acd735961ae3999fe1ced46a5bf73",
+  "index_info_sha256": "98fb28c972343edc19f1b88e68b569964c840ef19519cf61d9e7be3fd27f0326",
+  "preflight": "/home/kingrider/GSE89223_download/audits/G5_G6_handoff_20261009/g6_preflight_metadata_v1.json",
+  "data_root": "/home/kingrider/GSE89223_download",
+  "output_root": "/home/kingrider/GSE89223_download/salmon/G6_SF_raw_v1",
+  "min_free_gib": 30
+}
