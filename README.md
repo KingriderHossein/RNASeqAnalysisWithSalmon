@@ -47,14 +47,10 @@ The primary project is therefore a **whole-transcriptome expression reanalysis**
 |---|---|
 | [PROJECT-SPEC](docs/PROJECT-SPEC.md) | Goal, scope, deliverables, completion |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Full scientific end-to-end architecture |
-| [AUTOMATION-PIPELINE](docs/AUTOMATION-PIPELINE.md) | Modular execution architecture from acquisition through final report |
 | [DECISIONS](docs/DECISIONS.md) | Frozen scientific/engineering decisions |
 | [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) | Schemas, identities, provenance |
 | [VALIDATION](docs/VALIDATION.md) | Gates and rejection rules |
 | [GOVERNANCE](docs/GOVERNANCE.md) | GitHub workflow and change control |
-| [Module A CLI](docs/MODULE-A-CLI.md) | Shared coordinator commands and supported recovery boundaries |
-| [Module A desktop](docs/MODULE-A-DESKTOP.md) | Tauri bridge, local UI, build and native validation boundaries |
-| [Module A batch input](docs/MODULE-A-BATCH-INPUT.md) | Validated TXT/CSV/TSV run import, preview and selection rules |
 | [Metadata provenance](metadata/README.md) | Sample/cohort provenance |
 | [AGENTS](AGENTS.md) | Mandatory implementation rules |
 
@@ -140,16 +136,13 @@ Nikitina AS et al. *Novel RNA biomarkers of prostate cancer revealed by RNA-seq 
 
 ## Current state
 
-**Architecture v2.0 is the frozen execution baseline.**
+This is the scientific GSE89223 reanalysis repository, not a general-purpose
+acquisition/desktop application. The 32 raw sample FASTQs, validation records,
+FastQC/MultiQC and scientific pilot evidence are stored outside Git; Salmon
+G5/G6 integration follows the documented scientific gates.
 
-Module A core, CLI and Tauri desktop v0.1.6 share persisted resolved-run batches,
-output ownership and durable controls. Pause/Cancel stop Rust compression and
-checksum work at safe buffer boundaries; external tools finish their stage.
-Both clients support validated
-TXT/CSV/TSV run import. The desktop has file preview and job creation,
-saved checkpoints, bounded logs and warn-only workspace guidance. Full
-process-tree recovery, study/URL resolution and automatic network backoff remain
-unfinished. See the desktop document for exact validation evidence; accepted-
-cohort raw execution and release acceptance remain gated.
-See [finalization control and recovery](docs/MODULE-A-FINALIZATION-CONTROL.md).
-
+At the owner's request on 2026-10-09, the former Rust/Tauri Download Manager
+was removed from the current tree for later migration to a *separate repository*.
+Recover its complete source at historical Git commit
+`6ee4dfa99d20c9b593f92525a191cef641eb3f75`.
+No raw FASTQ, Salmon index or scientific data is deleted.

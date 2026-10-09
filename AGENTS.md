@@ -48,21 +48,17 @@ Never commit:
 
 ## Current execution boundary
 
-Architecture v2.0 and the Module A Download Manager architecture are frozen enough for **Module A implementation**.
+This repository owns ONLY the scientific GSE89223 workflow, its frozen
+reference and reproducible batch/CLI execution. Rust/Tauri GUI software,
+cross-platform Download Manager deliverables and their Rust Core/CLI are
+independent and out of scope.
 
-Permitted now:
-- Rust/Tauri project scaffolding;
-- shared Rust Core, CLI and desktop-shell implementation;
-- state/recovery/storage/tool-adapter code;
-- unit/integration tests using synthetic or bounded fixtures;
-- documentation and packaging work required by Module A.
+G4 accepts verifiable FASTQ input identity, checksums, provenance, QC and an
+explicit preprocessing decision regardless of the software that acquired it;
+a separate app's feature/release status is **not** a G4 dependency.
+G5 must freeze a defensible Salmon configuration with the known mapping/decoy
+warnings investigated and documented; G6 must respect its own G4/G5 scientific
+gates and safe no-overwrite output rules. G7 onwards use tximport/DESeq2.
 
-Still prohibited until their owning gates/work items authorize them:
-- production/raw cohort download execution as accepted project data;
-- reference/index construction;
-- Salmon quantification;
-- tximport;
-- DESeq2;
-- downstream scientific analysis.
-
-Implementation must not silently change the scientific contracts in the canonical docs.
+No scientific stage is implicitly accepted by removing an unrelated
+software dependency.

@@ -89,6 +89,7 @@ The project compares complete pipelines; it does not claim to isolate Salmon-vs-
 ## Non-goals
 
 Primary completion does not require:
+- any general-purpose Rust/Tauri Download Manager, desktop GUI or its release;
 - STAR/HTSeq/edgeR rerun;
 - TCGA replacement analysis;
 - GRCh38 rerun;

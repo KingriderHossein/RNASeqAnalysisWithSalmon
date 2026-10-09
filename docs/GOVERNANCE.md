@@ -1,4 +1,4 @@
-# Project Governance — Architecture v2.0
+# Project Governance — Architecture v2.1
 
 GitHub is the source of truth for execution state.
 
@@ -158,10 +158,19 @@ Project completion requires all criteria in the project specification, architect
 
 ## Current execution phase
 
-Architecture v2.0 and the Module A Download Manager execution contract are accepted.
+The authorized project is a scientific GSE89223 reanalysis:
+immutable FASTQ inputs + QC → Salmon → tximport → DESeq2 → validation.
 
-Current authorized engineering phase: **Module A implementation**.
+The desktop Rust/Tauri Download Manager is separate software and has
+been removed from the main tree. No scientific gate depends on its GUI
+features, installation or release, but all actual FASTQ provenance and QC
+requirements remain mandatory.
 
-This permits Rust/Tauri scaffolding, the shared core, CLI/GUI integration, persisted state/recovery behavior, storage checks, tool adapters, tests, and packaging work for the Download Manager.
+G4 requires actual source/run/size/checksum/QC evidence and a documented
+preprocessing decision; G5 freezes the scientific Salmon configuration
+in reviewed code; G6 must use one index/config and produce per-sample
+validated, restart-safe outputs with warnings preserved.
 
-Actual accepted-project raw-data acquisition and downstream scientific execution remain controlled by their Issues and validation gates. Reference/index construction, Salmon quantification, tximport, DESeq2 and downstream analysis are not implicitly authorized by this phase transition.
+The former Module A Issue should be closed as out of scope once this
+change is integrated, preserving its GitHub discussion for any future
+independent project.

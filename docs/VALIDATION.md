@@ -107,6 +107,9 @@ Cohort:
 - preprocessing decision frozen.
 
 Sample exclusion requires independent justification and review.
+G4 does not depend on implementing or completing a separate Download Manager;
+read integrity, acquisition provenance and scientific QC remain mandatory.
+
 
 ## G5 — Salmon pilot validation
 
