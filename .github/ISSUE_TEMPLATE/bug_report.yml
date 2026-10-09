@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible code, documentation or report problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: Please search existing issues first. English and Persian are welcome. Do not attach raw sequencing files or credentials.
+  - type: input
+    id: revision
+    attributes:
+      label: Repository revision and affected file
+      placeholder: Commit SHA, script version, report or page
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the command or browser action and a small example where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and evidence
+      description: OS, relevant tool versions, short logs and analysis ID if applicable. Remove credentials before posting.

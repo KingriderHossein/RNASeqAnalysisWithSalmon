@@ -1,0 +1,30 @@
+name: Scientific review
+description: Raise an evidence-based concern about data, methods, results or interpretation.
+title: "[Review]: "
+body:
+  - type: input
+    id: identity
+    attributes:
+      label: Analysis, stage and evidence location
+      description: Include the analysis ID or commit and a report, file or source link.
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: Observed evidence
+      description: State the observation separately from your explanation. Include values and denominators where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Scientific impact
+      description: Which result, cohort, assumption or validation gate may be affected?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_check
+    attributes:
+      label: Suggested check or resolution
+      description: Describe a check that could distinguish explanations. Do not propose tuning solely to improve publication agreement.
