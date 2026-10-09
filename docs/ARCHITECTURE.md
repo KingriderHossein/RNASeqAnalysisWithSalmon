@@ -1,6 +1,6 @@
-# Project Architecture v2.0 — FINAL
+# Project Architecture v2.1 — SCIENTIFIC WORKFLOW
 
-Status: **FROZEN BASELINE**
+Status: **SCIENTIFIC BASELINE; Download Manager out of scope (2026-10-09)**
 
 This is the canonical technical map for the GSE89223 project. Detailed scientific decisions, data schemas, validation rules, and governance live in the linked architecture documents.
 
@@ -8,7 +8,6 @@ This is the canonical technical map for the GSE89223 project. Detailed scientifi
 
 - [PROJECT-SPEC.md](PROJECT-SPEC.md) — goal, scope, deliverables, completion
 - [ARCHITECTURE.md](ARCHITECTURE.md) — end-to-end scientific stage model
-- [AUTOMATION-PIPELINE.md](AUTOMATION-PIPELINE.md) — modular execution/orchestration architecture
 - [DECISIONS.md](DECISIONS.md) — frozen scientific/engineering decisions
 - [DATA-CONTRACTS.md](DATA-CONTRACTS.md) — schemas, identities, provenance
 - [VALIDATION.md](VALIDATION.md) — stage gates and rejection rules
@@ -135,7 +134,10 @@ Stage 11 Final report / reproducibility closure
 
 Dependent stages cannot be accepted before their required gate passes.
 
-The execution/orchestration layer that progressively automates these stages is defined in [AUTOMATION-PIPELINE.md](AUTOMATION-PIPELINE.md). The first implementation module is the resumable cross-platform Acquisition / Download Manager.
+This repository uses version-pinned scientific scripts. A general-purpose
+Rust/Tauri Download Manager is an independent project, not a G4 prerequisite.
+G4 evaluates the received raw FASTQ and QC evidence, not the software product
+used to acquire it.
 
 ## 5. Stage 0 — Architecture freeze
 
@@ -326,6 +328,8 @@ No trimming rule is tuned against DE overlap.
 
 ### Gate G4
 Pass when raw identity/integrity is verified and preprocessing policy is frozen.
+Completion of an unrelated desktop GUI/Download Manager is not required.
+
 
 ## 10. Stage 5 — Salmon pilot
 
@@ -703,6 +707,7 @@ Exact validation examples and rejection rules are defined in [VALIDATION.md](VAL
 ## 21. Non-goals
 
 Primary completion does not require:
+- developing, packaging or releasing a Rust/Tauri Download Manager or GUI;
 - rerunning STAR/HTSeq/edgeR;
 - replacing GSE89223 with TCGA;
 - treating the paper as ground truth;
@@ -745,6 +750,9 @@ A successful Salmon run alone is **not** project completion.
 
 ## 24. Architecture freeze
 
-Architecture v2.0 is the execution baseline.
-
-New evidence may justify revision, but every material revision must be explicit, reviewable and traceable.
+Architecture v2.1 retains all scientific cohorts, reference identities,
+statistical designs and stage gates of v2.0. The explicit owner-directed change
+is removal of the unrelated Rust/Tauri Download Manager from this repository.
+Its source remains in Git history at
+`6ee4dfa99d20c9b593f92525a191cef641eb3f75`.
+Other material changes still require explicit review.

@@ -59,6 +59,10 @@ Each approved input records:
 
 Raw reads are immutable. A trimmed derivative receives a new path and provenance record; it never overwrites raw input.
 
+G4 acceptance evaluates file-level provenance and QC independently of
+the release status of a separate download application.
+
+
 ## QC contract
 
 Per sample:

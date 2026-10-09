@@ -42,6 +42,3 @@ __pycache__/
 Thumbs.db
 .vscode/
 
-
-# Rust
-target/
