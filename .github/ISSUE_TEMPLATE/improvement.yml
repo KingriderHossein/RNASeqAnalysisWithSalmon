@@ -1,0 +1,25 @@
+name: Improvement proposal
+description: Propose a focused documentation, reproducibility or workflow improvement.
+title: "[Improvement]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and user need
+      description: What is difficult today? Link related work if it exists.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+      description: State the scope, alternatives and expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+      description: How would a reviewer verify the improvement? Note any effect on scientific decisions or data.
+    validations:
+      required: true

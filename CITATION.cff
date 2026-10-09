@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: >-
+  If you use this repository, cite the exact commit and analysis ID and also
+  cite the original GSE89223 study (doi:10.18632/oncotarget.16518).
+type: software
+title: "RNASeqAnalysisWithSalmon: GSE89223 prostate cancer RNA-seq reanalysis"
+authors:
+  - given-names: Hossein
+    family-names: Shahsavari
+repository-code: "https://github.com/KingriderHossein/RNASeqAnalysisWithSalmon"
+abstract: >-
+  Scientific reanalysis of GSE89223 using Salmon, tximport and DESeq2,
+  with separate publication-comparison and paired-sensitivity cohorts,
+  documented validation gates and comparison to the original publication.
+  Biological quality review and full reproducibility closure remain open.
+keywords:
+  - RNA-seq
+  - Salmon
+  - tximport
+  - DESeq2
+  - prostate cancer
+  - GSE89223

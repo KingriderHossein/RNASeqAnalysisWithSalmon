@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="title desc">
+  <title id="title">RNASeqAnalysisWithSalmon</title>
+  <desc id="desc">A Salmon-first GSE89223 prostate transcriptomics project. Documented cohorts, traceable methods and publication comparison.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#102733"/><stop offset="1" stop-color="#123E47"/></linearGradient>
+    <linearGradient id="line" x2="1"><stop stop-color="#70DDD0"/><stop offset="1" stop-color="#ECA589"/></linearGradient>
+  </defs>
+  <rect width="1280" height="320" rx="20" fill="url(#bg)"/>
+  <path d="M0 302H1280" stroke="#28606A"/>
+  <g fill="none" stroke="#80C4C5" opacity=".12">
+    <circle cx="1170" cy="130" r="200"/><circle cx="1170" cy="130" r="158"/><circle cx="1170" cy="130" r="116"/>
+  </g>
+  <g font-family="Vazirmatn, Segoe UI, sans-serif">
+    <text x="54" y="61" fill="#8BE0D5" font-size="14" font-weight="700" letter-spacing="3">GSE89223 / PROSTATE TRANSCRIPTOMICS</text>
+    <text x="50" y="135" fill="#F5FAFC" font-size="46" font-weight="750">RNASeqAnalysisWithSalmon</text>
+    <text x="54" y="181" fill="#B9CED6" font-size="21">Documented cohorts. Traceable methods. Evidence-led comparison.</text>
+    <rect x="54" y="222" width="251" height="42" rx="21" fill="#234751"/>
+    <text x="179" y="249" fill="#E0F3F4" font-size="15" text-anchor="middle">Salmon → tximport → DESeq2</text>
+    <rect x="318" y="222" width="248" height="42" rx="21" fill="#234751"/>
+    <text x="442" y="249" fill="#E0F3F4" font-size="15" text-anchor="middle">GRCh37.p13 · GENCODE v19</text>
+  </g>
+  <g fill="none" stroke-linecap="round">
+    <path d="M1000 90C1050 90 1050 230 1110 230M1000 230C1050 230 1050 90 1110 90" stroke="url(#line)" stroke-width="7"/>
+    <path d="M1008 105H1102M1026 133H1084M1042 161H1068M1026 189H1084M1008 217H1102" stroke="#65ACB5" stroke-width="3"/>
+    <path d="M1145 116H1201M1145 139H1186M1145 162H1220M1145 185H1193M1145 208H1208" stroke="#7BDCD0" stroke-width="7" opacity=".8"/>
+  </g>
+</svg>
