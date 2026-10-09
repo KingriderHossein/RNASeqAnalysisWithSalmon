@@ -20,7 +20,7 @@ check(met["salmon_version"]=="2.8.0","salmon version mismatch")
 check(met.get("keep_duplicates") is True,"pilot reference duplicates unexpectedly collapsed")
 check(met.get("num_processed")==raw["reads"],"processed FASTQ read count mismatch")
 check(met.get("index_seq_hash")==idx["seq_hash"],"pilot index hash mismatch")
-check(met.get("num_valid_targets")==idx["first_decoy_index"],"quant targets and reference target count mismatch")
+check(met.get("num_valid_targets")==idx["num_refs"]-idx["num_decoys"],"quant targets and reference target count mismatch")
 with (D/"quant.sf").open() as f:
  q=list(csv.DictReader(f,delimiter="\t"))
 with (REF/"derived/tx2gene.tsv").open() as f:
