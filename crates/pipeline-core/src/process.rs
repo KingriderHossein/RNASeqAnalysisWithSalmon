@@ -84,8 +84,13 @@ impl fmt::Debug for StopToken {
 impl StopToken {
     /// Only in-process work may use a durable probe until tool-tree termination
     /// is proven. Once observed, a request or read error stays latched.
-    pub(crate) fn with_probe(probe: impl Fn() -> Result<bool, String> + Send + Sync + 'static) -> Self {
-        Self { probe: Some(Arc::new(probe)), ..Self::default() }
+    pub(crate) fn with_probe(
+        probe: impl Fn() -> Result<bool, String> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            probe: Some(Arc::new(probe)),
+            ..Self::default()
+        }
     }
 
     pub fn request_stop(&self) {
@@ -102,7 +107,9 @@ impl StopToken {
                 Ok(true) => self.request_stop(),
                 Err(error) => {
                     let mut first = self.probe_error.lock().unwrap_or_else(|e| e.into_inner());
-                    if first.is_none() { *first = Some(error); }
+                    if first.is_none() {
+                        *first = Some(error);
+                    }
                     self.request_stop();
                 }
             }
@@ -111,7 +118,10 @@ impl StopToken {
     }
 
     pub(crate) fn probe_error(&self) -> Option<String> {
-        self.probe_error.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.probe_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 

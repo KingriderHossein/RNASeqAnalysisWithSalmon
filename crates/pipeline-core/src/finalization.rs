@@ -368,14 +368,29 @@ impl FastqFinalizationExecutor {
         )
     }
 
-    fn pause_compression(&self, store: &mut StateStore, run_id: &RunId, attempt: i64,
-        staging_directory: &Path) -> Result<FinalizationResult, FinalizationError> {
+    fn pause_compression(
+        &self,
+        store: &mut StateStore,
+        run_id: &RunId,
+        attempt: i64,
+        staging_directory: &Path,
+    ) -> Result<FinalizationResult, FinalizationError> {
         let warning = cleanup_warning(remove_owned_directory(staging_directory));
-        let run = store.transition_run(run_id, RunState::PausedAtBoundary,
-            Some(COMPRESSION_CHECKPOINT), warning.as_deref())?;
-        Ok(FinalizationResult { run, attempt: Some(attempt),
-            disposition: FinalizationDisposition::PausedAtBoundary { stage: FinalizationStage::Compression },
-            compressed_paths: Vec::new(), checksum_manifest: None })
+        let run = store.transition_run(
+            run_id,
+            RunState::PausedAtBoundary,
+            Some(COMPRESSION_CHECKPOINT),
+            warning.as_deref(),
+        )?;
+        Ok(FinalizationResult {
+            run,
+            attempt: Some(attempt),
+            disposition: FinalizationDisposition::PausedAtBoundary {
+                stage: FinalizationStage::Compression,
+            },
+            compressed_paths: Vec::new(),
+            checksum_manifest: None,
+        })
     }
 
     fn recover_compression(
@@ -445,9 +460,15 @@ impl FastqFinalizationExecutor {
                     // Keep COMPRESSING: this published set still needs adoption.
                     // PAUSED_AT_BOUNDARY/gzip would wrongly start new compression
                     // against an already published destination on Resume.
-                    return Ok(FinalizationResult { run: current, attempt: None,
-                        disposition: FinalizationDisposition::PausedAtBoundary { stage: FinalizationStage::Compression },
-                        compressed_paths: Vec::new(), checksum_manifest: None });
+                    return Ok(FinalizationResult {
+                        run: current,
+                        attempt: None,
+                        disposition: FinalizationDisposition::PausedAtBoundary {
+                            stage: FinalizationStage::Compression,
+                        },
+                        compressed_paths: Vec::new(),
+                        checksum_manifest: None,
+                    });
                 }
                 StreamOutcome::Complete => {}
             }
@@ -766,13 +787,28 @@ impl FastqFinalizationExecutor {
         })
     }
 
-    fn pause_checksum(&self, store: &mut StateStore, run_id: &RunId, attempt: i64,
-        compressed_paths: Vec<PathBuf>) -> Result<FinalizationResult, FinalizationError> {
-        let run = store.transition_run(run_id, RunState::PausedAtBoundary,
-            Some(CHECKSUM_CHECKPOINT), None)?;
-        Ok(FinalizationResult { run, attempt: Some(attempt),
-            disposition: FinalizationDisposition::PausedAtBoundary { stage: FinalizationStage::Checksum },
-            compressed_paths, checksum_manifest: None })
+    fn pause_checksum(
+        &self,
+        store: &mut StateStore,
+        run_id: &RunId,
+        attempt: i64,
+        compressed_paths: Vec<PathBuf>,
+    ) -> Result<FinalizationResult, FinalizationError> {
+        let run = store.transition_run(
+            run_id,
+            RunState::PausedAtBoundary,
+            Some(CHECKSUM_CHECKPOINT),
+            None,
+        )?;
+        Ok(FinalizationResult {
+            run,
+            attempt: Some(attempt),
+            disposition: FinalizationDisposition::PausedAtBoundary {
+                stage: FinalizationStage::Checksum,
+            },
+            compressed_paths,
+            checksum_manifest: None,
+        })
     }
 
     fn completed_result(
@@ -1395,14 +1431,25 @@ mod tests {
         fs::write(&original, vec![b'A'; BUFFER_SIZE * 4]).unwrap();
         let after_one_buffer = || {
             let calls = std::sync::atomic::AtomicUsize::new(0);
-            StopToken::with_probe(move || Ok(calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) > 0))
+            StopToken::with_probe(move || {
+                Ok(calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) > 0)
+            })
         };
-        assert!(matches!(gzip_file(&original, &compressed, &after_one_buffer()).unwrap(), StreamOutcome::Stopped));
+        assert!(matches!(
+            gzip_file(&original, &compressed, &after_one_buffer()).unwrap(),
+            StreamOutcome::Stopped
+        ));
         assert!(fs::metadata(&compressed).unwrap().len() > 0);
         fs::remove_file(&compressed).unwrap();
         gzip_file(&original, &compressed, &StopToken::default()).unwrap();
-        assert!(matches!(verify_gzip_pair(&original, &compressed, &after_one_buffer()).unwrap(), StreamOutcome::Stopped));
-        assert!(matches!(sha256_file(&original, &after_one_buffer()).unwrap(), HashOutcome::Stopped));
+        assert!(matches!(
+            verify_gzip_pair(&original, &compressed, &after_one_buffer()).unwrap(),
+            StreamOutcome::Stopped
+        ));
+        assert!(matches!(
+            sha256_file(&original, &after_one_buffer()).unwrap(),
+            HashOutcome::Stopped
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1415,17 +1462,39 @@ mod tests {
         let directory = parent.join("compressed");
         fs::create_dir(&directory).unwrap();
         let compressed = directory.join("SRR000001.fastq.gz");
-        gzip_file(&parent.join("SRR000001.fastq"), &compressed, &StopToken::default()).unwrap();
+        gzip_file(
+            &parent.join("SRR000001.fastq"),
+            &compressed,
+            &StopToken::default(),
+        )
+        .unwrap();
         let published = fs::read(&compressed).unwrap();
-        let before = store.transition_run(&run_id, RunState::Compressing, Some(COMPRESSION_CHECKPOINT), None).unwrap();
+        let before = store
+            .transition_run(
+                &run_id,
+                RunState::Compressing,
+                Some(COMPRESSION_CHECKPOINT),
+                None,
+            )
+            .unwrap();
         let stop = StopToken::with_probe(|| Ok(true));
-        let paused = FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &stop).unwrap();
+        let paused = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &stop)
+            .unwrap();
         assert_eq!(paused.run, before);
-        assert!(matches!(paused.disposition, FinalizationDisposition::PausedAtBoundary { .. }));
+        assert!(matches!(
+            paused.disposition,
+            FinalizationDisposition::PausedAtBoundary { .. }
+        ));
         assert_eq!(fs::read(&compressed).unwrap(), published);
         assert!(!directory.join("SHA256SUMS").exists());
-        assert!(store.list_artifacts_by_kind(&run_id, ArtifactKind::CompressedFastq).unwrap().is_empty());
-        let resumed = FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &StopToken::default()).unwrap();
+        assert!(store
+            .list_artifacts_by_kind(&run_id, ArtifactKind::CompressedFastq)
+            .unwrap()
+            .is_empty());
+        let resumed = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .unwrap();
         assert_eq!(resumed.run.state, RunState::Complete);
         assert_eq!(fs::read(&compressed).unwrap(), published);
         drop(store);
@@ -1435,22 +1504,40 @@ mod tests {
     #[test]
     fn control_error_before_manifest_publication_leaves_recoverable_output() {
         let root = temp_root("manifest-control-error");
-        let (mut store, run_id, _) = fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
         let directory = root.join("fastq/SRR000001/compressed");
         let observed = directory.clone();
         let stop = StopToken::with_probe(move || {
-            if observed.is_dir() && fs::read_dir(&observed).unwrap().any(|entry| entry.unwrap().file_name().to_string_lossy().starts_with("SHA256SUMS.tmp-")) {
+            if observed.is_dir()
+                && fs::read_dir(&observed).unwrap().any(|entry| {
+                    entry
+                        .unwrap()
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("SHA256SUMS.tmp-")
+                })
+            {
                 Err("synthetic control read failure at publication".into())
-            } else { Ok(false) }
+            } else {
+                Ok(false)
+            }
         });
-        let paused = FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &stop).unwrap();
+        let paused = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &stop)
+            .unwrap();
         assert_eq!(paused.run.state, RunState::PausedAtBoundary);
-        assert_eq!(paused.run.last_checkpoint.as_deref(), Some(CHECKSUM_CHECKPOINT));
+        assert_eq!(
+            paused.run.last_checkpoint.as_deref(),
+            Some(CHECKSUM_CHECKPOINT)
+        );
         assert!(stop.probe_error().unwrap().contains("at publication"));
         assert!(!directory.join("SHA256SUMS").exists());
         let compressed = directory.join("SRR000001.fastq.gz");
         let bytes = fs::read(&compressed).unwrap();
-        let resumed = FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &StopToken::default()).unwrap();
+        let resumed = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .unwrap();
         assert_eq!(resumed.run.state, RunState::Complete);
         assert_eq!(fs::read(compressed).unwrap(), bytes);
         drop(store);
@@ -1460,21 +1547,36 @@ mod tests {
     #[test]
     fn pause_after_manifest_publication_resumes_without_replacing_valid_bytes() {
         let root = temp_root("published-manifest-stop");
-        let (mut store, run_id, _) = fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
+        let (mut store, run_id, _) =
+            fastq_ready_store(&root, &[("SRR000001.fastq", b"@r\nAC\n+\nII\n")]);
         let manifest = root.join("fastq/SRR000001/compressed/SHA256SUMS");
         let observed = manifest.clone();
         let stop = StopToken::with_probe(move || Ok(observed.is_file()));
-        let paused = FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &stop).unwrap();
+        let paused = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &stop)
+            .unwrap();
         assert_eq!(paused.run.state, RunState::PausedAtBoundary);
-        assert_eq!(paused.run.last_checkpoint.as_deref(), Some(CHECKSUM_CHECKPOINT));
+        assert_eq!(
+            paused.run.last_checkpoint.as_deref(),
+            Some(CHECKSUM_CHECKPOINT)
+        );
         let bytes = fs::read(&manifest).unwrap();
         assert!(!bytes.is_empty());
-        let checksum = store.list_artifacts_by_kind(&run_id, ArtifactKind::Checksum).unwrap();
+        let checksum = store
+            .list_artifacts_by_kind(&run_id, ArtifactKind::Checksum)
+            .unwrap();
         assert_eq!(checksum.len(), 1);
-        let resumed = FastqFinalizationExecutor.execute_to_complete(&mut store, &run_id, &StopToken::default()).unwrap();
+        let resumed = FastqFinalizationExecutor
+            .execute_to_complete(&mut store, &run_id, &StopToken::default())
+            .unwrap();
         assert_eq!(resumed.run.state, RunState::Complete);
         assert_eq!(fs::read(manifest).unwrap(), bytes);
-        assert_eq!(store.list_artifacts_by_kind(&run_id, ArtifactKind::Checksum).unwrap(), checksum);
+        assert_eq!(
+            store
+                .list_artifacts_by_kind(&run_id, ArtifactKind::Checksum)
+                .unwrap(),
+            checksum
+        );
         drop(store);
         fs::remove_dir_all(root).unwrap();
     }

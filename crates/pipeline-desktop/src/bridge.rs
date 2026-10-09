@@ -217,7 +217,8 @@ impl DesktopBridge {
                     JobStage::Conversion => ("conversion", "Converting FASTQ"),
                     JobStage::Finalization => ("finalization", "Compressing and verifying"),
                 };
-                state.snapshot["activity"] = json!({"run_id": run_id.as_str(), "stage": stage, "label": label});
+                state.snapshot["activity"] =
+                    json!({"run_id": run_id.as_str(), "stage": stage, "label": label});
             }
             JobEvent::RunError { message, .. } => {
                 state.snapshot["worker_error"] = json!(message);

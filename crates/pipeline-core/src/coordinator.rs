@@ -34,7 +34,10 @@ impl fmt::Display for JobError {
             Self::Ownership(error) => error.fmt(f),
             Self::Io(error) => error.fmt(f),
             Self::Invalid(message) | Self::Stage(message) => f.write_str(message),
-            Self::Control(message) => write!(f, "cannot read durable job control; work stopped safely: {message}"),
+            Self::Control(message) => write!(
+                f,
+                "cannot read durable job control; no further stages will start: {message}"
+            ),
         }
     }
 }
@@ -128,12 +131,15 @@ impl JobControl {
     }
 
     pub fn intent(&self) -> Result<ControlIntent, JobError> {
-        self.read_intent().map_err(|error| JobError::Control(error.to_string()))
+        self.read_intent()
+            .map_err(|error| JobError::Control(error.to_string()))
     }
 
     fn read_intent(&self) -> Result<ControlIntent, JobError> {
         if !fs::symlink_metadata(&self.directory)?.file_type().is_dir() {
-            return Err(JobError::Invalid("control directory must remain a real directory".into()));
+            return Err(JobError::Invalid(
+                "control directory must remain a real directory".into(),
+            ));
         }
         for (name, intent) in [
             ("cancel.request", ControlIntent::Cancel),
@@ -155,9 +161,12 @@ impl JobControl {
 
     fn stream_stop_token(&self) -> StopToken {
         let control = self.clone();
-        StopToken::with_probe(move || control.read_intent()
-            .map(|intent| intent != ControlIntent::Continue)
-            .map_err(|error| error.to_string()))
+        StopToken::with_probe(move || {
+            control
+                .read_intent()
+                .map(|intent| intent != ControlIntent::Continue)
+                .map_err(|error| error.to_string())
+        })
     }
 
     fn resume(&self) -> Result<(), JobError> {
@@ -262,7 +271,6 @@ pub fn cancel_job(
         match cancel_run_at_boundary(store, &run) {
             Ok(cancelled) => snapshot(&cancelled, &mut emit),
             Err(error) => {
-                let control_failed = matches!(error, JobError::Control(_));
                 let message = error.to_string();
                 emit(JobEvent::RunError {
                     run_id: run.id.clone(),
@@ -442,19 +450,25 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
             if let Err(error) = self.drive_run(
                 store, &run.id, mode, &sra, &request, &ownership, &control, &mut emit,
             ) {
+                let control_failed = matches!(error, JobError::Control(_));
                 let message = error.to_string();
                 emit(JobEvent::RunError {
                     run_id: run.id.clone(),
                     message: message.clone(),
                 });
                 errors.push((run.id.clone(), message));
-                if control_failed { break; }
+                if control_failed {
+                    break;
+                }
             }
             let intent = match control.intent() {
                 Ok(intent) => intent,
                 Err(error) => {
                     let message = error.to_string();
-                    emit(JobEvent::RunError { run_id: run.id.clone(), message: message.clone() });
+                    emit(JobEvent::RunError {
+                        run_id: run.id.clone(),
+                        message: message.clone(),
+                    });
                     errors.push((run.id, message));
                     break;
                 }
@@ -534,8 +548,12 @@ impl<'a, R: CommandRunner> JobCoordinator<'a, R> {
                 }
                 JobStage::Finalization => {
                     let stop = control.stream_stop_token();
-                    let result = FastqFinalizationExecutor
-                        .execute_with_ownership(store, id, &stop, Some(ownership));
+                    let result = FastqFinalizationExecutor.execute_with_ownership(
+                        store,
+                        id,
+                        &stop,
+                        Some(ownership),
+                    );
                     if let Some(error) = stop.probe_error() {
                         return Err(JobError::Control(error));
                     }
