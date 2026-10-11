@@ -33,3 +33,32 @@ jobs:
           for script in scripts/*.sh; do
             bash -n "$script"
           done
+      - name: Stage 4 acquisition offline tests (no downloads)
+        shell: bash
+        run: |
+          bash -n scripts/acquisition/sra_downloader_v1.5.0.sh
+          bash scripts/acquisition/test_sra_downloader_v1.5.0.sh
+          python3 -m unittest discover -s scripts/acquisition -p 'test_*.py'
+          python3 scripts/acquisition/manifest_runs.py --output "$RUNNER_TEMP/GSE89223_runs.txt"
+          test "$(grep -c '^SRR' "$RUNNER_TEMP/GSE89223_runs.txt")" -eq 32
+
+  powershell-syntax:
+    name: Windows PowerShell launcher syntax only
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Check out the candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Parse launcher (no WSL, network or download)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/acquisition/sra-downloader-wsl.ps1').Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error; exit 1 }
+

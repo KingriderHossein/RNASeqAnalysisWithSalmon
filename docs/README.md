@@ -7,6 +7,7 @@ Choose the entry point that matches your task. The canonical scientific document
 | Understand the project | [English overview](../README.md) or [راهنمای فارسی](../README.fa.md) |
 | Explore the findings | [Interactive report](dashboard/index.html) and [scientific summary](reports/GSE89223-final-advisor-scientific-summary-2026-10-09.md) |
 | Inspect or run the repository | [Getting started](GETTING-STARTED.md) |
+| Download the 32 approved SRA Runs | [Stage 4 acquisition: Ubuntu / Windows + WSL2](RAW-ACQUISITION.md) |
 | Assess what can be reproduced | [Reproducibility](REPRODUCIBILITY.md) |
 | Check sample identity | [Metadata provenance](../metadata/README.md) and [sample manifest](../metadata/derived/GSE89223_sample_manifest.tsv) |
 | Review stage evidence | [Report index](reports/README.md) |
