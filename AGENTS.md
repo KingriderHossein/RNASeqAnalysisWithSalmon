@@ -53,6 +53,11 @@ reference and reproducible batch/CLI execution. Rust/Tauri GUI software,
 cross-platform Download Manager deliverables and their Rust Core/CLI are
 independent and out of scope.
 
+The narrowly scoped Stage 4 acquisition Bash CLI and Windows/WSL2 launcher
+in scripts/acquisition/ are **scientific workflow helpers**, not the separate
+standalone Download Manager product. They must never fetch data during CI,
+overwrite raw FASTQ/SRA, change cohort labels, or claim G4 acceptance.
+
 G4 accepts verifiable FASTQ input identity, checksums, provenance, QC and an
 explicit preprocessing decision regardless of the software that acquired it;
 a separate app's feature/release status is **not** a G4 dependency.

@@ -30,7 +30,18 @@ done
 
 These checks do not execute Salmon or R and do not establish scientific gate acceptance.
 
-## 3. Prepare a scientific rerun
+## 3. Acquire raw SRA data (Stage 4)
+
+The **Stage 1** manifest/cohort gate is distinct from **Stage 4** raw-data acquisition. Use the [Stage 4 acquisition guide](RAW-ACQUISITION.md) to export the 32 approved SRR IDs from the manifest and download them using either Ubuntu Bash or Windows PowerShell with WSL2 Ubuntu. The two entry points share one NCBI SRA Toolkit engine. Both offer resume/retry, local SHA-256 records and logs; neither extracts FASTQ or silently replaces existing study inputs.
+
+~~~bash
+python3 scripts/acquisition/manifest_runs.py --output raw/acquisition/GSE89223_runs.txt
+bash scripts/acquisition/sra_downloader_v1.5.0.sh --run SRR4453804 --output "$HOME/gse89223/sra" --dry-run
+~~~
+
+No data download or scientific acceptance gate runs in CI. Extract FASTQ separately, verify sample identity, checksums and read counts, and satisfy G4 before dependent work.
+
+## 4. Prepare a scientific rerun
 
 **The current stage scripts document a workstation workflow. They are not yet a portable installer or one-command pipeline.** In particular, several scripts refer to `/home/kingrider/GSE89223_download`, and the G6 runner reads an external audited configuration. The committed configuration record is not automatically its runtime input.
 

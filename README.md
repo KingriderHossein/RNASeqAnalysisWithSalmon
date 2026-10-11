@@ -95,6 +95,23 @@ The check uses Python's standard library. It does not download sequencing data o
 
 **To reproduce the analysis**, first read [Getting started](docs/GETTING-STARTED.md) and [Reproducibility](docs/REPRODUCIBILITY.md). Several stage scripts retain workstation paths; a portable, fully locked environment is still pending. This repository is not yet a one-command analysis package.
 
+## Download raw SRA data (Stage 4)
+
+The validated 32-run cohort is defined by [the manifest](metadata/derived/GSE89223_sample_manifest.tsv). **Stage 1 locks the sample identities; Stage 4 acquires raw sequencing data.** This repository now includes a recoverable **Ubuntu Bash downloader** and a **Windows + WSL2 PowerShell launcher** sharing that same Bash engine. Both use the official NCBI SRA Toolkit. They do **not** extract FASTQ, run QC or replace the separate Rust/Tauri product.
+
+Start with [Stage 4 acquisition instructions](docs/RAW-ACQUISITION.md). Always preview before real transfers. No data are downloaded by cloning the repository or by CI.
+
+~~~bash
+python3 scripts/acquisition/manifest_runs.py --output raw/acquisition/GSE89223_runs.txt
+bash scripts/acquisition/sra_downloader_v1.5.0.sh --input raw/acquisition/GSE89223_runs.txt --output "$HOME/gse89223/sra" --dry-run
+~~~
+
+Windows + WSL2 users can preview one approved Run from PowerShell after installing SRA Toolkit **inside WSL Ubuntu**:
+
+~~~powershell
+.\scripts\acquisition\sra-downloader-wsl.ps1 -Run SRR4453804 -Distribution Ubuntu -DryRun
+~~~
+
 ## Repository map
 
 | Location | What you will find |

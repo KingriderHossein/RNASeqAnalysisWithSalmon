@@ -282,6 +282,8 @@ Pass when all reference components reconcile and no annotation-release mixing ex
 ### Raw input
 Only run accessions approved by the manifest.
 
+The project-scoped [Ubuntu and Windows + WSL2 SRA acquisition helpers](RAW-ACQUISITION.md) use the Stage 1 manifest to select exact SRR IDs; they produce validated **SRA archives** but do not produce FASTQ, FastQC/MultiQC or scientific gate acceptance. The separate Rust/Tauri Download Manager remains out of scope. Existing validated raw inputs and downstream outputs must not be overwritten.
+
 ### Storage
 Raw FASTQ/SRA are immutable external inputs and stay outside Git.
 

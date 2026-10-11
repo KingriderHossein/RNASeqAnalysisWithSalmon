@@ -66,3 +66,17 @@ Salmon reference/index or validated quantification output is removed.
 
 G4 evaluates actual raw-read provenance and QC independently; completing
 the former Module A product is **not** a condition for its acceptance.
+
+## Owner-directed Stage 4 acquisition entry points — 2026-10-11
+
+Provide two **repository-scoped** ways to retrieve frozen-manifest SRA Runs:
+Linux/Ubuntu Bash and Windows PowerShell through WSL2 Ubuntu. Both use the
+same NCBI prefetch/vdb-validate Bash engine with safe resume, local integrity
+records, and failure logs. These are helpers within the scientific acquisition
+stage, **not** the detached general-purpose Rust/Tauri Download Manager.
+
+Stage 1 remains metadata/cohort identity; Stage 4 alone owns raw acquisition
+and QC. SRA download does not establish FASTQ identity, scientific QC or G4
+acceptance. Preserve existing raw data, references, Salmon indexes and
+historical scientific results. The new run-list exporter reads the approved
+manifest and refuses to overwrite conflicting prior lists.
